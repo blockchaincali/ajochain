@@ -3,81 +3,252 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AjoChain: trustless rotating savings on Portaldot</title>
+  <title>AjoChain: rotating savings circles on Portaldot</title>
+  <meta name="description" content="Save in a circle with people you trust. AjoChain holds the pot in a smart contract on Portaldot, pays each member in turn, and covers missed payments from collateral." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">◎</span>
-      <div>
-        <h1>AjoChain</h1>
-        <p class="tag">Ajo / esusu savings, enforced by smart contracts on Portaldot</p>
+  <a class="skip" href="#app">Skip to the app</a>
+
+  <!-- ───────────── Nav ───────────── -->
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a href="#top" class="brand" aria-label="AjoChain home">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="6 5.2" />
+          <circle cx="20" cy="6" r="4.5" fill="var(--gold)" />
+        </svg>
+        <span>AjoChain</span>
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#how">How it works</a>
+        <a href="#why">Why on-chain</a>
+        <a href="#app">Your circles</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-wallet">
+        <span id="netPill" class="net hidden"></span>
+        <button id="connectBtn" class="btn btn-primary">Connect wallet</button>
+        <button id="acctBtn" class="btn btn-acct hidden" title="Copy address"></button>
       </div>
-    </div>
-    <div class="wallet">
-      <div id="walletInfo" class="wallet-info hidden">
-        <span id="netBadge" class="pill">Portaldot</span>
-        <span id="addr" class="mono"></span>
-        <span id="bal" class="pill soft"></span>
-        <span id="badges" class="pill gold"></span>
-      </div>
-      <button id="connectBtn" class="btn primary">Connect wallet</button>
     </div>
   </header>
 
-  <main>
-    <section id="intro" class="card intro">
-      <h2>Save together. No collector needed.</h2>
+  <main id="top">
+    <!-- ───────────── Hero ───────────── -->
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <h1>Save in a circle.<br />The contract holds the pot.</h1>
+        <p class="lede">
+          Ajo, esusu, adashe: the savings circle you already know. Everyone pays in each round,
+          one member takes the whole pot, and it rotates until everyone has had a turn.
+          AjoChain runs the circle on Portaldot, so nobody has to trust a collector with the money.
+        </p>
+        <div class="hero-cta">
+          <a href="#app" class="btn btn-primary btn-lg" id="heroCta">Start a circle</a>
+          <a href="#how" class="btn btn-quiet btn-lg">See how it works</a>
+        </div>
+        <ul class="hero-facts">
+          <li><strong>Paid out instantly</strong> when the last member pays</li>
+          <li><strong>Collateral covers</strong> anyone who misses a round</li>
+          <li><strong>Savings badge</strong> for every clean cycle</li>
+        </ul>
+      </div>
+
+      <figure class="hero-ring" aria-label="Animated example of a six-member savings circle">
+        <svg id="ring" viewBox="0 0 400 400" role="img">
+          <circle class="ring-track" cx="200" cy="200" r="140" />
+          <g id="ringMembers"></g>
+          <g id="ringPot">
+            <circle r="30" class="pot" />
+            <text class="pot-amt" text-anchor="middle" dy="-2">60</text>
+            <text class="pot-unit" text-anchor="middle" dy="12">aUSD</text>
+          </g>
+        </svg>
+        <figcaption id="ringCaption">Round 1 of 6: Ada receives 60 aUSD</figcaption>
+      </figure>
+    </section>
+
+    <div class="adire" aria-hidden="true"></div>
+
+    <!-- ───────────── How it works ───────────── -->
+    <section id="how" class="section wrap">
+      <h2>How a circle runs</h2>
+      <p class="section-lede">Five steps, all enforced by the contract. No admin can move the money.</p>
       <ol class="steps">
-        <li><b>Create</b> a group: contribution, number of members, round length.</li>
-        <li><b>Join</b> by locking one contribution as collateral. The group starts when it is full.</li>
-        <li><b>Contribute</b> each round. The full pot goes to that round's member automatically.</li>
-        <li>Missed a round? After the deadline anyone can <b>close the round</b>: collateral covers the gap.</li>
-        <li>Finish the cycle cleanly and earn a soulbound <b>AjoBadge</b>, your on-chain savings record.</li>
+        <li>
+          <h3>Create</h3>
+          <p>Set the contribution, how many members, and how long each round lasts.</p>
+        </li>
+        <li>
+          <h3>Join</h3>
+          <p>Lock one contribution as collateral. The circle starts the moment the last seat fills.</p>
+        </li>
+        <li>
+          <h3>Pay each round</h3>
+          <p>When everyone has paid, the full pot goes straight to that round's member.</p>
+        </li>
+        <li>
+          <h3>Close late rounds</h3>
+          <p>After the deadline anyone can close the round. A late member's collateral fills the gap.</p>
+        </li>
+        <li>
+          <h3>Earn your badge</h3>
+          <p>Finish without missing a round: collateral comes back and you get a soulbound AjoBadge.</p>
+        </li>
       </ol>
     </section>
 
-    <div id="app" class="hidden">
-      <section class="grid">
-        <div class="card">
-          <h3>Create a group</h3>
-          <form id="createForm">
-            <label>Group name <input name="name" required maxlength="60" placeholder="Lagos Traders Ajo" /></label>
-            <div class="row">
-              <label>Contribution (aUSD) <input name="amount" type="number" min="0.01" step="0.01" value="10" required /></label>
-              <label>Members <input name="members" type="number" min="2" max="20" value="3" required /></label>
+    <!-- ───────────── Why ───────────── -->
+    <section id="why" class="section why">
+      <div class="wrap why-inner">
+        <h2>What changes when the circle is on-chain</h2>
+        <dl class="why-list">
+          <div>
+            <dt>No collector to run off</dt>
+            <dd>The pot sits in a contract, not in someone's account. It can only go to the member whose turn it is.</dd>
+          </div>
+          <div>
+            <dt>Defaults don't break the circle</dt>
+            <dd>Every member locks one contribution up front. If someone misses a round, their collateral pays it, and the recipient still gets the full pot.</dd>
+          </div>
+          <div>
+            <dt>A savings record you own</dt>
+            <dd>Each clean cycle mints a non-transferable AjoBadge to your wallet: proof you saved and paid on time, readable by any app.</dd>
+          </div>
+          <div>
+            <dt>Built on Portaldot V3</dt>
+            <dd>Solidity contracts on Portaldot's EVM layer, using standard ERC-20 for savings and ERC-721 for badges.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ───────────── App ───────────── -->
+    <section id="app" class="section wrap app">
+      <div class="app-head">
+        <h2>Your circles</h2>
+        <p class="section-lede">Testnet only. Savings use aUSD, a free test stablecoin.</p>
+      </div>
+
+      <div id="gate" class="gate">
+        <p>Connect a wallet on the Portaldot testnet to create or join a circle.</p>
+        <button class="btn btn-primary btn-lg" data-connect>Connect wallet</button>
+      </div>
+
+      <div id="appBody" class="hidden">
+        <div id="gasWarn" class="notice hidden" role="alert"></div>
+
+        <div class="stats">
+          <div class="stat"><span class="stat-label">aUSD balance</span><span id="statBal" class="stat-val">-</span></div>
+          <div class="stat"><span class="stat-label" id="statGasLabel">Gas balance</span><span id="statGas" class="stat-val">-</span></div>
+          <div class="stat"><span class="stat-label">Circles joined</span><span id="statJoined" class="stat-val">-</span></div>
+          <div class="stat stat-badge"><span class="stat-label">Savings badges</span><span id="statBadges" class="stat-val">-</span></div>
+          <button id="faucetBtn" class="btn btn-gold">Get 1,000 aUSD</button>
+        </div>
+
+        <div class="app-grid">
+          <aside class="create">
+            <h3>Start a circle</h3>
+            <form id="createForm">
+              <label>Circle name
+                <input name="name" required maxlength="60" placeholder="Lagos Traders Ajo" />
+              </label>
+              <div class="two">
+                <label>Each round (aUSD)
+                  <input name="amount" type="number" min="0.01" step="0.01" value="10" required />
+                </label>
+                <label>Members
+                  <input name="members" type="number" min="2" max="20" value="3" required />
+                </label>
+              </div>
+              <label>Round length (minutes)
+                <input name="minutes" type="number" min="1" value="5" required />
+              </label>
+              <p class="form-sum" id="formSum"></p>
+              <button class="btn btn-primary" type="submit">Create circle</button>
+            </form>
+          </aside>
+
+          <div class="groups-col">
+            <div class="groups-bar">
+              <div class="tabs" role="tablist" aria-label="Filter circles">
+                <button role="tab" class="tab is-on" data-filter="all" aria-selected="true">All</button>
+                <button role="tab" class="tab" data-filter="mine" aria-selected="false">Mine</button>
+                <button role="tab" class="tab" data-filter="open" aria-selected="false">Open seats</button>
+                <button role="tab" class="tab" data-filter="done" aria-selected="false">Completed</button>
+              </div>
+              <button id="refreshBtn" class="btn btn-quiet btn-sm">Refresh</button>
             </div>
-            <label>Round length (minutes) <input name="minutes" type="number" min="1" value="5" required /></label>
-            <button class="btn primary" type="submit">Create group</button>
-          </form>
+            <div id="groups" class="groups"></div>
+          </div>
         </div>
-        <div class="card">
-          <h3>Test tokens</h3>
-          <p class="muted">AjoChain groups save in <b>aUSD</b>, a test stablecoin on the Portaldot testnet. Claim 1,000 aUSD to try it out.</p>
-          <button id="faucetBtn" class="btn">Get 1,000 aUSD</button>
-          <h3 class="mt">Contracts</h3>
-          <ul id="contracts" class="mono small"></ul>
-        </div>
-      </section>
 
-      <section class="card">
-        <div class="section-head">
-          <h3>Groups</h3>
-          <button id="refreshBtn" class="btn ghost">Refresh</button>
-        </div>
-        <div id="groups" class="groups"><p class="muted">Loading…</p></div>
-      </section>
+        <details class="activity">
+          <summary>Activity <span id="logCount" class="count">0</span></summary>
+          <ul id="log" class="log"></ul>
+        </details>
+      </div>
+    </section>
 
-      <section class="card">
-        <h3>Activity</h3>
-        <ul id="log" class="log small"></ul>
-      </section>
-    </div>
+    <!-- ───────────── FAQ ───────────── -->
+    <section id="faq" class="section wrap faq">
+      <h2>Questions</h2>
+      <details>
+        <summary>Who decides the payout order?</summary>
+        <p>The order people join. The first member to join receives the first pot, and so on. Everyone can see the order before the circle starts.</p>
+      </details>
+      <details>
+        <summary>What happens if I miss a round?</summary>
+        <p>Once the round's deadline passes, anyone can close it. Your locked collateral covers your payment, so the recipient still gets the full pot. You're marked as having missed a round and won't receive a badge for that circle.</p>
+      </details>
+      <details>
+        <summary>When do I get my collateral back?</summary>
+        <p>Automatically, in the same transaction that pays out the final round. If your collateral was used to cover a missed payment, there's nothing left to return.</p>
+      </details>
+      <details>
+        <summary>Is this real money?</summary>
+        <p>Not yet. AjoChain runs on the Portaldot testnet with a test stablecoin (aUSD) that anyone can claim for free.</p>
+      </details>
+      <details>
+        <summary>Why do I need gas tokens?</summary>
+        <p>Every action is a blockchain transaction. On the Portaldot testnet, gas is paid in testnet POT, which the Portaldot team gives out for free on Discord.</p>
+      </details>
+    </section>
   </main>
 
-  <div id="toast" class="toast hidden"></div>
-  <footer>Built for Portaldot Hacker House 2026 · Ecosystem DApps</footer>
+  <!-- ───────────── Footer ───────────── -->
+  <footer class="foot">
+    <div class="adire adire-thin" aria-hidden="true"></div>
+    <div class="wrap foot-inner">
+      <div class="foot-brand">
+        <span class="foot-logo">AjoChain</span>
+        <p>Rotating savings circles, enforced by smart contracts on Portaldot. Built for Portaldot Hacker House 2026.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#how">How it works</a>
+        <a href="#app">Your circles</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div class="foot-col">
+        <h4>Project</h4>
+        <a href="https://github.com/blockchaincali/ajochain" target="_blank" rel="noopener">Source code on GitHub</a>
+        <a href="https://dorahacks.io/hackathon/portaldot-hacker-house-2026/detail" target="_blank" rel="noopener">Portaldot Hacker House</a>
+        <a href="https://discord.gg/portaldot" target="_blank" rel="noopener">Portaldot Discord</a>
+      </div>
+      <div class="foot-col foot-contracts">
+        <h4>Contracts</h4>
+        <ul id="contracts"></ul>
+      </div>
+    </div>
+    <p class="wrap foot-note">Testnet software. Do not send real funds.</p>
+  </footer>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script type="module" src="app.js"></script>
 </body>
