@@ -7,7 +7,10 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:local": "hardhat run scripts/deploy.js",
-    "deploy:portaldot": "hardhat run scripts/deploy.js --network portaldot"
+    "deploy:portaldot": "hardhat run scripts/deploy.js --network portaldot",
+    "node": "hardhat node",
+    "deploy:localhost": "hardhat run scripts/deploy.js --network localhost",
+    "frontend": "npx --yes serve frontend -l 5173"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "hh2",

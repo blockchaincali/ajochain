@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AjoChain: trustless rotating savings on Portaldot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◎</span>
+      <div>
+        <h1>AjoChain</h1>
+        <p class="tag">Ajo / esusu savings, enforced by smart contracts on Portaldot</p>
+      </div>
+    </div>
+    <div class="wallet">
+      <div id="walletInfo" class="wallet-info hidden">
+        <span id="netBadge" class="pill">Portaldot</span>
+        <span id="addr" class="mono"></span>
+        <span id="bal" class="pill soft"></span>
+        <span id="badges" class="pill gold"></span>
+      </div>
+      <button id="connectBtn" class="btn primary">Connect wallet</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="intro" class="card intro">
+      <h2>Save together. No collector needed.</h2>
+      <ol class="steps">
+        <li><b>Create</b> a group: contribution, number of members, round length.</li>
+        <li><b>Join</b> by locking one contribution as collateral. The group starts when it is full.</li>
+        <li><b>Contribute</b> each round. The full pot goes to that round's member automatically.</li>
+        <li>Missed a round? After the deadline anyone can <b>close the round</b>: collateral covers the gap.</li>
+        <li>Finish the cycle cleanly and earn a soulbound <b>AjoBadge</b>, your on-chain savings record.</li>
+      </ol>
+    </section>
+
+    <div id="app" class="hidden">
+      <section class="grid">
+        <div class="card">
+          <h3>Create a group</h3>
+          <form id="createForm">
+            <label>Group name <input name="name" required maxlength="60" placeholder="Lagos Traders Ajo" /></label>
+            <div class="row">
+              <label>Contribution (aUSD) <input name="amount" type="number" min="0.01" step="0.01" value="10" required /></label>
+              <label>Members <input name="members" type="number" min="2" max="20" value="3" required /></label>
+            </div>
+            <label>Round length (minutes) <input name="minutes" type="number" min="1" value="5" required /></label>
+            <button class="btn primary" type="submit">Create group</button>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Test tokens</h3>
+          <p class="muted">AjoChain groups save in <b>aUSD</b>, a test stablecoin on the Portaldot testnet. Claim 1,000 aUSD to try it out.</p>
+          <button id="faucetBtn" class="btn">Get 1,000 aUSD</button>
+          <h3 class="mt">Contracts</h3>
+          <ul id="contracts" class="mono small"></ul>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h3>Groups</h3>
+          <button id="refreshBtn" class="btn ghost">Refresh</button>
+        </div>
+        <div id="groups" class="groups"><p class="muted">Loading…</p></div>
+      </section>
+
+      <section class="card">
+        <h3>Activity</h3>
+        <ul id="log" class="log small"></ul>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <footer>Built for Portaldot Hacker House 2026 · Ecosystem DApps</footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
