@@ -8,8 +8,13 @@ const MANAGER_ERRORS = [
   "error InvalidParams()", "error GroupNotFound()", "error NotOpen()", "error NotActive()",
   "error AlreadyMember()", "error NotMember()", "error AlreadyPaid()", "error RoundStillOpen()",
 ];
+const ERC20_ERRORS = [
+  "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+  "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
+];
 const MANAGER_ABI = [
   ...MANAGER_ERRORS,
+  ...ERC20_ERRORS, // token transfers happen inside join/contribute, so their errors bubble up here
   "function groupCount() view returns (uint256)",
   "function createGroup(string name, address token, uint256 contribution, uint8 maxMembers, uint64 roundDuration) returns (uint256)",
   "function join(uint256 groupId)",
@@ -21,8 +26,7 @@ const MANAGER_ABI = [
   "function paidInRound(uint256, uint256, address) view returns (bool)",
 ];
 const TOKEN_ABI = [
-  "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
-  "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
+  ...ERC20_ERRORS,
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address, address) view returns (uint256)",
   "function approve(address, uint256) returns (bool)",
@@ -229,6 +233,12 @@ async function send(label, done, fn) {
 }
 
 async function ensureAllowance(amount) {
+  const bal = await token.balanceOf(me);
+  if (bal < amount) {
+    toast(`You need ${fmt(amount)} aUSD but have ${fmt(bal)}. Use “Get 1,000 aUSD” first.`, "error");
+    $("faucetBtn").focus();
+    return false;
+  }
   const current = await token.allowance(me, CONFIG.contracts.AjoManager);
   if (current >= amount) return true;
   return send("Approve aUSD", "Approved aUSD for AjoChain", () =>
