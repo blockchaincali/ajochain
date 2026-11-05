@@ -1,6 +1,14 @@
 // Deploys MockUSDT, AjoBadge and AjoManager, wires the badge minter, and
 // saves addresses + transaction hashes to deployments/<network>.json
-// (you need these for the DoraHacks submission).
+// (you need these for the DoraHacks submission). It also points
+// frontend/config.js at the new contracts.
+//
+// Portaldot V3 runs pallet-revive behind an eth-rpc proxy. There, a deploy's
+// gas covers the storage deposit, so it can cost well over 100 POT, and the
+// node rejects ("Invalid Transaction") any tx whose gasLimit x gasPrice is more
+// than your balance. So this script: sends legacy txs at the node's gas price,
+// uses the node's own gas estimate, checks you can afford each step before
+// sending, and is resumable: re-run it after topping up and it skips what's done.
 const fs = require("fs");
 const path = require("path");
 const hre = require("hardhat");
@@ -8,43 +16,83 @@ const hre = require("hardhat");
 async function main() {
   const { ethers, network } = hre;
   const [deployer] = await ethers.getSigners();
-  const bal = await ethers.provider.getBalance(deployer.address);
-  console.log(`Network:  ${network.name} (chainId ${network.config.chainId ?? "local"})`);
-  console.log(`Deployer: ${deployer.address}`);
-  console.log(`Balance:  ${ethers.formatEther(bal)}`);
-  if (bal === 0n) throw new Error("Deployer has no gas tokens. Fund it first.");
-
-  const out = { network: network.name, chainId: network.config.chainId, deployer: deployer.address, contracts: {} };
-
-  async function deploy(name, args = []) {
-    const c = await ethers.deployContract(name, args);
-    const tx = c.deploymentTransaction();
-    await c.waitForDeployment();
-    const address = await c.getAddress();
-    console.log(`${name.padEnd(11)} ${address}  tx ${tx.hash}`);
-    out.contracts[name] = { address, txHash: tx.hash };
-    return c;
-  }
-
-  await deploy("MockUSDT");
-  const badge = await deploy("AjoBadge", [deployer.address]);
-  const manager = await deploy("AjoManager", [await badge.getAddress()]);
-
-  const tx = await badge.setMinter(await manager.getAddress());
-  await tx.wait();
-  console.log(`setMinter   tx ${tx.hash}`);
-  out.setMinterTx = tx.hash;
+  const me = deployer.address;
+  const p = ethers.provider;
+  const isLocal = network.name === "localhost" || network.name === "hardhat";
 
   const dir = path.join(__dirname, "..", "deployments");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${network.name}.json`);
-  fs.writeFileSync(file, JSON.stringify(out, null, 2));
+  const out = !isLocal && fs.existsSync(file)
+    ? JSON.parse(fs.readFileSync(file, "utf8"))
+    : { network: network.name, contracts: {} };
+  out.network = network.name;
+  out.chainId = Number((await p.getNetwork()).chainId);
+  out.deployer = me;
+  const save = () => fs.writeFileSync(file, JSON.stringify(out, null, 2));
+
+  const pot = (wei) => Number(ethers.formatEther(wei)).toFixed(2);
+  console.log(`Network:  ${network.name} (chainId ${out.chainId})`);
+  console.log(`Deployer: ${me}`);
+  console.log(`Balance:  ${pot(await p.getBalance(me))}\n`);
+
+  const gasPrice = isLocal ? undefined : BigInt(await p.send("eth_gasPrice", []));
+
+  async function overridesFor(txRequest, label) {
+    if (isLocal) return {};
+    const gasLimit = await p.estimateGas({ ...txRequest, from: me });
+    const cost = gasLimit * gasPrice;
+    const bal = await p.getBalance(me);
+    console.log(`${label.padEnd(12)} needs up to ${pot(cost)} POT (balance ${pot(bal)})`);
+    if (cost > bal) {
+      save();
+      throw new Error(
+        `Not enough POT for ${label}: need ${pot(cost)}, have ${pot(bal)}. ` +
+          `Top up your EVM account (send POT to its 5… mirror address) and re-run; finished steps are kept.`
+      );
+    }
+    return { type: 0, gasPrice, gasLimit };
+  }
+
+  async function deploy(name, args = []) {
+    const done = out.contracts[name];
+    if (done?.address && (await p.getCode(done.address)) !== "0x") {
+      console.log(`${name.padEnd(12)} already at ${done.address}, skipping`);
+      return ethers.getContractAt(name, done.address);
+    }
+    const F = await ethers.getContractFactory(name);
+    const req = await F.getDeployTransaction(...args);
+    const ov = await overridesFor(req, name);
+    const c = await F.deploy(...args, ov);
+    const tx = c.deploymentTransaction();
+    await c.waitForDeployment();
+    const address = await c.getAddress();
+    console.log(`${name.padEnd(12)} ${address}  tx ${tx.hash}`);
+    out.contracts[name] = { address, txHash: tx.hash };
+    save();
+    return c;
+  }
+
+  await deploy("MockUSDT");
+  const badge = await deploy("AjoBadge", [me]);
+  const manager = await deploy("AjoManager", [await badge.getAddress()]);
+
+  const managerAddr = await manager.getAddress();
+  if ((await badge.minter()).toLowerCase() !== managerAddr.toLowerCase()) {
+    const req = await badge.setMinter.populateTransaction(managerAddr);
+    const tx = await badge.setMinter(managerAddr, await overridesFor(req, "setMinter"));
+    await tx.wait();
+    console.log(`setMinter    tx ${tx.hash}`);
+    out.setMinterTx = tx.hash;
+  } else {
+    console.log("setMinter    already done, skipping");
+  }
+  save();
   console.log(`\nSaved to ${path.relative(process.cwd(), file)}`);
 
   // Point the frontend at these contracts.
-  const isLocal = network.name === "localhost" || network.name === "hardhat";
   const frontendConfig = {
-    chainId: Number((await ethers.provider.getNetwork()).chainId),
+    chainId: out.chainId,
     chainName: isLocal ? "Hardhat Local" : "Portaldot Testnet V3",
     rpcUrl: isLocal ? "http://127.0.0.1:8545" : network.config.url,
     nativeSymbol: isLocal ? "ETH" : "POT",
@@ -60,6 +108,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error(e.message || e);
   process.exitCode = 1;
 });

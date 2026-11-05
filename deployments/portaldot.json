@@ -1,0 +1,11 @@
+{
+  "network": "portaldot",
+  "contracts": {
+    "MockUSDT": {
+      "address": "0x3Ce64f4776E26c4A930d1fdfCeD1acfBec5cC551",
+      "txHash": "0x96eb3ed2cea77fa6fb81b625f43ce03f55e8306945bad597b0a51ab8363ce2c7"
+    }
+  },
+  "chainId": 420420777,
+  "deployer": "0x9FC79E370C3c37De07B42513E13E7f1d4dB8D223"
+}
