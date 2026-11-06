@@ -1,7 +1,7 @@
 {
   "name": "ajochain",
   "version": "0.1.0",
-  "description": "Trustless rotating savings groups (ajo/esusu) on Portaldot Network V3.0",
+  "description": "Trustless rotating savings circles (ajo/esusu) in MUSD on Mezo, with locked collateral earning BTC in the MUSD Stability Pool",
   "license": "MIT",
   "scripts": {
     "compile": "hardhat compile",
@@ -10,7 +10,9 @@
     "deploy:portaldot": "hardhat run scripts/deploy.js --network portaldot",
     "node": "hardhat node",
     "deploy:localhost": "hardhat run scripts/deploy.js --network localhost",
-    "frontend": "npx --yes serve frontend -l 5173"
+    "frontend": "npx --yes serve frontend -l 5173",
+    "deploy:mezo": "hardhat run scripts/deploy.js --network mezotestnet",
+    "test:forge": "forge test"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "hh2",

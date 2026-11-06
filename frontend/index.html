@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AjoChain: rotating savings circles on Portaldot</title>
-  <meta name="description" content="Save in a circle with people you trust. AjoChain holds the pot in a smart contract on Portaldot, pays each member in turn, and covers missed payments from collateral." />
+  <title>AjoChain: rotating savings circles in MUSD on Mezo</title>
+  <meta name="description" content="Save in a circle with people you trust. AjoChain holds the pot in a smart contract on Mezo, saves in MUSD (a Bitcoin-backed dollar), and puts locked collateral to work earning BTC." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -45,7 +45,8 @@
         <p class="lede">
           Ajo, esusu, adashe: the savings circle you already know. Everyone pays in each round,
           one member takes the whole pot, and it rotates until everyone has had a turn.
-          AjoChain runs the circle on Portaldot, so nobody has to trust a collector with the money.
+          AjoChain runs the circle on Mezo in MUSD, a dollar stablecoin backed by Bitcoin, so nobody
+          has to trust a collector and your savings hold their dollar value.
         </p>
         <div class="hero-cta">
           <a href="#app" class="btn btn-primary btn-lg" id="heroCta">Start a circle</a>
@@ -54,6 +55,7 @@
         <ul class="hero-facts">
           <li><strong>Paid out instantly</strong> when the last member pays</li>
           <li><strong>Collateral covers</strong> anyone who misses a round</li>
+          <li><strong>Collateral earns BTC</strong> in Mezo's Stability Pool while you save</li>
           <li><strong>Savings badge</strong> for every clean cycle</li>
         </ul>
       </div>
@@ -65,10 +67,10 @@
           <g id="ringPot">
             <circle r="30" class="pot" />
             <text class="pot-amt" text-anchor="middle" dy="-2">60</text>
-            <text class="pot-unit" text-anchor="middle" dy="12">aUSD</text>
+            <text class="pot-unit" text-anchor="middle" dy="12" data-sym>MUSD</text>
           </g>
         </svg>
-        <figcaption id="ringCaption">Round 1 of 6: Ada receives 60 aUSD</figcaption>
+        <figcaption id="ringCaption">Round 1 of 6: Ada receives 60 MUSD</figcaption>
       </figure>
     </section>
 
@@ -85,7 +87,7 @@
         </li>
         <li>
           <h3>Join</h3>
-          <p>Lock one contribution as collateral. The circle starts the moment the last seat fills.</p>
+          <p>Lock one contribution as collateral. The circle starts the moment the last seat fills, and the collateral starts earning.</p>
         </li>
         <li>
           <h3>Pay each round</h3>
@@ -97,7 +99,7 @@
         </li>
         <li>
           <h3>Earn your badge</h3>
-          <p>Finish without missing a round: collateral comes back and you get a soulbound AjoBadge.</p>
+          <p>Finish without missing a round: collateral comes back with BTC earnings, and you get a soulbound AjoBadge.</p>
         </li>
       </ol>
     </section>
@@ -120,8 +122,12 @@
             <dd>Each clean cycle mints a non-transferable AjoBadge to your wallet: proof you saved and paid on time, readable by any app.</dd>
           </div>
           <div>
-            <dt>Built on Portaldot V3</dt>
-            <dd>Solidity contracts on Portaldot's EVM layer, using standard ERC-20 for savings and ERC-721 for badges.</dd>
+            <dt>Savings in a Bitcoin-backed dollar</dt>
+            <dd>Circles save in MUSD, Mezo's stablecoin backed by Bitcoin and pegged to the US dollar, so a pot is worth the same when it pays out as when you saved it. MEZO circles work too.</dd>
+          </div>
+          <div>
+            <dt>Collateral that earns</dt>
+            <dd>Instead of sitting idle for the whole cycle, MUSD collateral goes into Mezo's Stability Pool, which pays depositors BTC from liquidated loans. At the end you get your MUSD back plus your share of the BTC.</dd>
           </div>
         </dl>
       </div>
@@ -131,11 +137,11 @@
     <section id="app" class="section wrap app">
       <div class="app-head">
         <h2>Your circles</h2>
-        <p class="section-lede">Testnet only. Savings use aUSD, a free test stablecoin.</p>
+        <p class="section-lede">Testnet only, on <span data-chain>Mezo Testnet</span>. Borrow test MUSD against free test BTC in the Mezo app.</p>
       </div>
 
       <div id="gate" class="gate">
-        <p>Connect a wallet on the Portaldot testnet to create or join a circle.</p>
+        <p>Connect a wallet on the <span data-chain>Mezo Testnet</span> to create or join a circle.</p>
         <button class="btn btn-primary btn-lg" data-connect>Connect wallet</button>
       </div>
 
@@ -143,11 +149,17 @@
         <div id="gasWarn" class="notice hidden" role="alert"></div>
 
         <div class="stats">
-          <div class="stat"><span class="stat-label">aUSD balance</span><span id="statBal" class="stat-val">-</span></div>
+          <div class="stat"><span class="stat-label"><span data-sym>MUSD</span> balance</span><span id="statBal" class="stat-val">-</span></div>
           <div class="stat"><span class="stat-label" id="statGasLabel">Gas balance</span><span id="statGas" class="stat-val">-</span></div>
           <div class="stat"><span class="stat-label">Circles joined</span><span id="statJoined" class="stat-val">-</span></div>
           <div class="stat stat-badge"><span class="stat-label">Savings badges</span><span id="statBadges" class="stat-val">-</span></div>
-          <button id="faucetBtn" class="btn btn-gold">Get 1,000 aUSD</button>
+          <div class="stat stat-earn"><span class="stat-label">BTC earned to claim</span><span id="statEarn" class="stat-val">-</span>
+            <button id="claimBtn" class="btn btn-gold btn-sm hidden">Claim BTC</button></div>
+          <div class="stat-links">
+            <button id="faucetBtn" class="btn btn-gold">Get test tokens</button>
+            <a id="getMusd" class="btn btn-gold hidden" target="_blank" rel="noopener">Get MUSD</a>
+            <a id="getGas" class="btn btn-quiet btn-sm hidden" target="_blank" rel="noopener">Free test BTC</a>
+          </div>
         </div>
 
         <div class="app-grid">
@@ -157,8 +169,11 @@
               <label>Circle name
                 <input name="name" required maxlength="60" placeholder="Lagos Traders Ajo" />
               </label>
+              <label>Save in
+                <select name="token" id="tokenSelect"></select>
+              </label>
               <div class="two">
-                <label>Each round (aUSD)
+                <label>Each round
                   <input name="amount" type="number" min="0.01" step="0.01" value="10" required />
                 </label>
                 <label>Members
@@ -167,6 +182,10 @@
               </div>
               <label>Round length (minutes)
                 <input name="minutes" type="number" min="1" value="5" required />
+              </label>
+              <label class="check" id="earnRow">
+                <input type="checkbox" name="earn" checked />
+                <span><b>Earn while you save.</b> Put the circle's collateral in Mezo's MUSD Stability Pool to earn BTC.</span>
               </label>
               <p class="form-sum" id="formSum"></p>
               <button class="btn btn-primary" type="submit">Create circle</button>
@@ -206,16 +225,24 @@
         <p>Once the round's deadline passes, anyone can close it. Your locked collateral covers your payment, so the recipient still gets the full pot. You're marked as having missed a round and won't receive a badge for that circle.</p>
       </details>
       <details>
+        <summary>How does my collateral earn?</summary>
+        <p>If the circle has “Earn while you save” on, the contract deposits everyone's MUSD collateral into Mezo's Stability Pool when the circle starts. The pool uses deposits to repay loans that get liquidated and hands the depositors the BTC that backed those loans, usually worth more than the MUSD used. At the end of the cycle you get your MUSD back and claim your share of the BTC. Liquidations can shrink the MUSD part slightly while the BTC part grows.</p>
+      </details>
+      <details>
+        <summary>What if the Stability Pool is busy?</summary>
+        <p>Mezo briefly blocks Stability Pool withdrawals while an under-collateralized loan is waiting to be liquidated. A late round can be closed again a few minutes later. The final payout is never blocked: if refunds can't leave the pool yet, anyone can press “Return collateral” once it reopens.</p>
+      </details>
+      <details>
         <summary>When do I get my collateral back?</summary>
-        <p>Automatically, in the same transaction that pays out the final round. If your collateral was used to cover a missed payment, there's nothing left to return.</p>
+        <p>Automatically, in the same transaction that pays out the final round, together with your share of any BTC earned. If your collateral was used to cover a missed payment, there's nothing left to return.</p>
       </details>
       <details>
         <summary>Is this real money?</summary>
-        <p>Not yet. AjoChain runs on the Portaldot testnet with a test stablecoin (aUSD) that anyone can claim for free.</p>
+        <p>Not yet. AjoChain runs on the Mezo testnet. Get free test BTC from the Mezo faucet, then borrow test MUSD against it in the Mezo testnet app.</p>
       </details>
       <details>
         <summary>Why do I need gas tokens?</summary>
-        <p>Every action is a blockchain transaction. On the Portaldot testnet, gas is paid in testnet POT, which the Portaldot team gives out for free on Discord.</p>
+        <p>Every action is a blockchain transaction. On Mezo, gas is paid in BTC. The Mezo faucet gives out free test BTC.</p>
       </details>
     </section>
   </main>
@@ -226,7 +253,7 @@
     <div class="wrap foot-inner">
       <div class="foot-brand">
         <span class="foot-logo">AjoChain</span>
-        <p>Rotating savings circles, enforced by smart contracts on Portaldot. Built for Portaldot Hacker House 2026.</p>
+        <p>Rotating savings circles in MUSD, enforced by smart contracts on Mezo. Built for the Mezo Buildathon 2026.</p>
       </div>
       <div class="foot-col">
         <h4>Product</h4>
@@ -237,8 +264,9 @@
       <div class="foot-col">
         <h4>Project</h4>
         <a href="https://github.com/blockchaincali/ajochain" target="_blank" rel="noopener">Source code on GitHub</a>
-        <a href="https://dorahacks.io/hackathon/portaldot-hacker-house-2026/detail" target="_blank" rel="noopener">Portaldot Hacker House</a>
-        <a href="https://discord.gg/portaldot" target="_blank" rel="noopener">Portaldot Discord</a>
+        <a href="https://mezo.org/docs/developers/" target="_blank" rel="noopener">Mezo developer docs</a>
+        <a href="https://testnet.mezo.org" target="_blank" rel="noopener">Mezo testnet app</a>
+        <a href="https://explorer.test.mezo.org" target="_blank" rel="noopener">Mezo testnet explorer</a>
       </div>
       <div class="foot-col foot-contracts">
         <h4>Contracts</h4>

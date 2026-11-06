@@ -1,0 +1,13 @@
+# Foundry is used for the Mezo Stability Pool tests in test/forge.
+# Hardhat (npm test) still runs the original JS tests.
+[profile.default]
+src = "contracts"
+test = "test/forge"
+out = "out-forge"
+cache_path = "cache-forge"
+libs = ["node_modules"]
+remappings = ["@openzeppelin/=node_modules/@openzeppelin/"]
+solc_version = "0.8.24"
+evm_version = "paris"
+optimizer = true
+optimizer_runs = 200

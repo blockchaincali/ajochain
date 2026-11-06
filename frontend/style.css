@@ -188,7 +188,9 @@ a { color: var(--blue); }
 .stat-label { font-size: var(--step--1); color: var(--muted); }
 .stat-val { font: 600 1.35rem var(--display); color: var(--indigo); font-variant-numeric: tabular-nums; }
 .stat-badge .stat-val { color: var(--gold); }
-#faucetBtn { margin-left: auto; }
+.stat-earn .stat-val { color: var(--gold); }
+.stat-earn .btn { margin-top: .4rem; justify-self: start; }
+.stat-links { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 
 .app-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
 .create { background: var(--paper); border-radius: 20px; padding: 1.6rem; position: sticky; top: 92px; }
@@ -196,11 +198,17 @@ a { color: var(--blue); }
 form { display: grid; gap: 1rem; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
 label { display: grid; gap: .35rem; font-size: var(--step--1); font-weight: 600; color: var(--muted); }
-input {
+input, select {
   font: 500 1rem var(--body); color: var(--ink); width: 100%;
   padding: .7rem .85rem; border: 1.5px solid var(--line); border-radius: 12px; background: var(--mist);
 }
-input:focus { outline: none; border-color: var(--blue); background: #fff; }
+input[type=checkbox] { width: 1.1rem; height: 1.1rem; padding: 0; margin-top: .15rem; accent-color: var(--indigo); }
+.check { display: flex; gap: .6rem; align-items: flex-start; font-weight: 500; color: var(--ink);
+  background: var(--mist); border: 1.5px solid var(--line); border-radius: 12px; padding: .7rem .8rem; cursor: pointer; }
+.check.off { opacity: .5; cursor: not-allowed; }
+.yield { font-size: var(--step--1); color: var(--ink); background: var(--gold-soft); border-radius: 10px; padding: .55rem .75rem; margin: .2rem 0 .6rem; }
+.yield.warn { background: var(--clay-soft); color: var(--clay); }
+input:focus, select:focus { outline: none; border-color: var(--blue); background: #fff; }
 .form-sum { font-size: var(--step--1); color: var(--muted); background: var(--gold-soft); border-radius: 10px; padding: .7rem .8rem; }
 .form-sum b { color: var(--ink); }
 

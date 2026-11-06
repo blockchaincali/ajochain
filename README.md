@@ -1,13 +1,75 @@
-# AjoChain
+# AjoChain on Mezo
 
-**Save in a circle. The contract holds the pot.**
+**Save in a circle, in a Bitcoin-backed dollar. Your collateral earns BTC while you wait.**
 
-AjoChain runs rotating savings circles (ajo, esusu, adashe) as smart contracts on **Portaldot Network V3**. Nobody holds the pot, missed payments are covered by collateral, and every clean cycle mints a soulbound savings badge.
+AjoChain runs rotating savings circles (ajo, esusu, adashe) as smart contracts on **Mezo**, saved in **MUSD**, Mezo's stablecoin backed by Bitcoin. Nobody holds the pot, missed payments are covered by collateral, and every clean cycle mints a soulbound savings badge. The new part for Mezo is **Earn while you save**: the collateral each member locks for the whole cycle goes into Mezo's **MUSD Stability Pool**, where it earns BTC from liquidations instead of sitting idle.
 
-- **Live dApp:** https://ajochain-five.vercel.app
-- **Demo video:** https://youtu.be/m2BIaAypfYw
-- **Pitch deck:** https://github.com/blockchaincali/ajochain/blob/main/docs/AjoChain-pitch-deck.pdf
-- **Track:** Portaldot Hacker House 2026, Ecosystem DApps
+- **Track:** Mezo Buildathon 2026, Track 1 (DeFi: yield) with Track 2 reach (savings for people who already use ajo)
+- **Chain:** Mezo testnet (chain ID 31611)
+- **Origin:** AjoChain started at Portaldot Hacker House 2026 (tag [`portaldot-submission`](../../tree/portaldot-submission)). Everything above "Original AjoChain" is new for the Mezo Buildathon.
+
+## Why MUSD
+
+In Nigeria, ajo is how millions of traders and workers save, but the naira loses value between payouts. Saving in MUSD keeps a pot's dollar value from the day you pay in to the day you collect, and it's backed by Bitcoin rather than a bank. Members who hold BTC can borrow MUSD against it on Mezo to join a circle without selling.
+
+## Mezo integration
+
+| What | How |
+| --- | --- |
+| **MUSD circles** | Contributions, pots and collateral are MUSD (`0x1189…C503` on testnet). MEZO circles (`0x7b7c…0001`) are supported too, without yield. |
+| **Collateral earns in the Stability Pool** | When a circle with *Earn while you save* fills, `AjoManager` deposits all members' collateral with `StabilityPool.provideToSP`. The pool absorbs liquidated MUSD debt and pays depositors the BTC behind it. |
+| **Shared deposit, fair split** | All circles share one Stability Pool position. A share system (like a vault) tracks each circle's slice of the MUSD deposit, and a per-share BTC accumulator tracks the BTC each circle earned. A circle that joins later doesn't share in earlier liquidations. |
+| **Defaults paid from the pool** | If a member misses a round, `closeRound` withdraws their collateral from the pool with `withdrawFromSP`, so the recipient still gets the full pot. |
+| **End of cycle** | Members get their MUSD collateral back, pro rata to what they still have locked, and their share of the circle's BTC, which they withdraw with `claimBTC()`. |
+| **Pool safety** | Mezo blocks pool withdrawals while a loan is under-collateralized. `closeRound` reverts with `StabilityPoolBusy` and can be retried. The **final payout is never blocked**: refunds are marked pending and anyone can call `finalizeRefunds()` later. If a deposit fails, the circle still starts with idle collateral. |
+
+```
+             ┌─────────────────────────────┐
+             │ AjoChain web app (frontend) │  ethers.js + MetaMask, Mezo testnet
+             └──────────────┬──────────────┘
+                            │
+                     ┌──────▼──────┐  mint   ┌──────────┐
+   MUSD / MEZO ─────►│ AjoManager  │────────►│ AjoBadge │ soulbound ERC-721
+   (join, pay)       │ circles,    │         └──────────┘
+                     │ payouts,    │ provideToSP / withdrawFromSP
+                     │ share vault │◄───────────────────────────► Mezo MUSD StabilityPool
+                     └─────────────┘   BTC gains (native)              (0x1CCA…680e)
+```
+
+### Mezo testnet addresses used
+
+| Contract | Address | Source |
+| --- | --- | --- |
+| MUSD | `0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503` | mezo.org/docs, mezo-org/musd `deployments/matsnet` |
+| StabilityPool | `0x1CCA7E410eE41739792eA0A24e00349Dd247680e` | mezo-org/musd `deployments/matsnet` |
+| MEZO | `0x7b7c000000000000000000000000000000000001` | mezod MEZO token precompile |
+| AjoManager | *(filled in by `npm run deploy:mezo`)* | |
+| AjoBadge | *(filled in by `npm run deploy:mezo`)* | |
+
+## Deploy to Mezo testnet
+
+```bash
+npm install
+cp .env.example .env               # PRIVATE_KEY of a testnet-only wallet
+# 1. Get test BTC for gas: https://faucet.test.mezo.org
+# 2. Get MUSD: borrow against test BTC at https://testnet.mezo.org
+npm run deploy:mezo                # deploys AjoBadge + AjoManager, writes frontend/config.js
+npm run frontend                   # http://localhost:5173
+```
+
+## Tests
+
+```bash
+npx hardhat test     # original circle logic (no yield)
+forge test           # Mezo Stability Pool integration, 11 tests (needs Foundry)
+```
+
+`test/forge/AjoManagerMezo.t.sol` runs against `MockStabilityPool`, which mirrors the real pool's behaviour (pulls MUSD with `transferFrom`, pays BTC gains natively, shrinks deposits on liquidation, blocks withdrawals while troves are under-collateralized). It covers: collateral moving into the pool on start, a full cycle with a liquidation (MUSD back + BTC credited + claim), two circles sharing the pool fairly across liquidations, defaults paid out of the pool, `StabilityPoolBusy` retry, final payout while the pool is locked plus `finalizeRefunds`, fallback to idle collateral if the pool refuses a deposit, a total wipe-out of the deposit (circle still completes, BTC paid), MUSD-only yield, and rejecting stray BTC.
+
+---
+
+## Original AjoChain (Portaldot Hacker House)
+
 
 ## The problem
 
@@ -92,7 +154,13 @@ Notes from deploying on V3:
 
 `test/AjoManager.test.js` covers: circle start on the last join, rejected joins, a full cycle (everyone paid once, collateral refunded, badges minted), instant payout on the last payment, collateral covering a missed round (and no badge for the defaulter), double payments and non-members, soulbound transfers and minter access, and parameter validation.
 
-## Roadmap
+## Roadmap (Mezo)
+
+- **Next (Wave 2 → Dec 2026):** pilot MUSD circles with Lagos market traders; one-click "borrow MUSD against BTC and join" flow using `BorrowerOperations.openTrove`; Telegram reminders before round deadlines.
+- **Q1 2027:** Mezo mainnet launch after review; savings badges as a credit signal for Mezo borrowing.
+- **Q2 2027:** naira on- and off-ramp to MUSD through ShopSwift's payment rails; bid-based payout order.
+
+## Roadmap (original, Portaldot)
 
 - **Next:** audit and Portaldot mainnet, real stablecoin savings, random or bid-based payout order, pilot circles with Lagos traders.
 - **Later:** naira on- and off-ramp, an ink! (WASM) reputation registry readable by EVM apps, cross-chain savings, lender integrations.

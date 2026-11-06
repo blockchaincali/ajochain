@@ -11,7 +11,7 @@ describe("AjoChain", function () {
 
     const usd = await ethers.deployContract("MockUSDT");
     const badge = await ethers.deployContract("AjoBadge", [owner.address]);
-    const ajo = await ethers.deployContract("AjoManager", [await badge.getAddress()]);
+    const ajo = await ethers.deployContract("AjoManager", [await badge.getAddress(), ethers.ZeroAddress, ethers.ZeroAddress]);
     await badge.setMinter(await ajo.getAddress());
 
     const ajoAddr = await ajo.getAddress();
@@ -20,7 +20,7 @@ describe("AjoChain", function () {
       await usd.connect(s).approve(ajoAddr, ethers.MaxUint256);
     }
 
-    await ajo.connect(alice).createGroup("Lagos Traders Ajo", await usd.getAddress(), C, 3, DURATION);
+    await ajo.connect(alice).createGroup("Lagos Traders Ajo", await usd.getAddress(), C, 3, DURATION, false);
     return { owner, alice, bob, carol, dave, usd, badge, ajo };
   }
 
@@ -132,15 +132,15 @@ describe("AjoChain", function () {
   it("validates group parameters", async function () {
     const { ajo, usd, alice } = await setup();
     const token = await usd.getAddress();
-    await expect(ajo.connect(alice).createGroup("x", token, C, 1, DURATION)).to.be.revertedWithCustomError(
+    await expect(ajo.connect(alice).createGroup("x", token, C, 1, DURATION, false)).to.be.revertedWithCustomError(
       ajo,
       "InvalidParams"
     );
-    await expect(ajo.connect(alice).createGroup("x", token, 0, 3, DURATION)).to.be.revertedWithCustomError(
+    await expect(ajo.connect(alice).createGroup("x", token, 0, 3, DURATION, false)).to.be.revertedWithCustomError(
       ajo,
       "InvalidParams"
     );
-    await expect(ajo.connect(alice).createGroup("x", token, C, 3, 10)).to.be.revertedWithCustomError(
+    await expect(ajo.connect(alice).createGroup("x", token, C, 3, 10, false)).to.be.revertedWithCustomError(
       ajo,
       "InvalidParams"
     );

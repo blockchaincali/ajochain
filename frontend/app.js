@@ -7,6 +7,8 @@ import { CONFIG } from "./config.js";
 const MANAGER_ERRORS = [
   "error InvalidParams()", "error GroupNotFound()", "error NotOpen()", "error NotActive()",
   "error AlreadyMember()", "error NotMember()", "error AlreadyPaid()", "error RoundStillOpen()",
+  "error YieldNotSupported()", "error StabilityPoolBusy()", "error NothingToFinalize()", "error NothingToClaim()",
+  "error BtcTransferFailed()",
 ];
 const ERC20_ERRORS = [
   "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
@@ -16,11 +18,15 @@ const MANAGER_ABI = [
   ...MANAGER_ERRORS,
   ...ERC20_ERRORS, // token transfers happen inside join/contribute, so their errors bubble up here
   "function groupCount() view returns (uint256)",
-  "function createGroup(string name, address token, uint256 contribution, uint8 maxMembers, uint64 roundDuration) returns (uint256)",
+  "function createGroup(string name, address token, uint256 contribution, uint8 maxMembers, uint64 roundDuration, bool earnYield) returns (uint256)",
   "function join(uint256 groupId)",
   "function contribute(uint256 groupId)",
   "function closeRound(uint256 groupId)",
-  "function getGroup(uint256 groupId) view returns (tuple(string name, address creator, address token, uint256 contribution, uint64 roundDuration, uint64 roundDeadline, uint8 maxMembers, uint8 currentRound, uint8 paidCount, uint8 status, uint256 pot))",
+  "function finalizeRefunds(uint256 groupId)",
+  "function claimBTC()",
+  "function btcOwed(address) view returns (uint256)",
+  "function yieldPosition(uint256 groupId) view returns (uint256 musdInPool, uint256 btcEarned)",
+  "function getGroup(uint256 groupId) view returns (tuple(string name, address creator, address token, uint256 contribution, uint64 roundDuration, uint64 roundDeadline, uint8 maxMembers, uint8 currentRound, uint8 paidCount, uint8 status, uint256 pot, bool earnsYield, bool refundPending))",
   "function getMembers(uint256 groupId) view returns (address[])",
   "function hasDefaulted(uint256, address) view returns (bool)",
   "function paidInRound(uint256, uint256, address) view returns (bool)",
@@ -43,17 +49,31 @@ const FRIENDLY = {
   NotMember: "Only members of this circle can pay into it.",
   AlreadyPaid: "You've already paid for this round.",
   RoundStillOpen: "The round can only be closed after its deadline.",
-  ERC20InsufficientBalance: "Not enough aUSD. Use “Get 1,000 aUSD” first.",
-  ERC20InsufficientAllowance: "aUSD spending wasn't approved. Try again and approve in your wallet.",
+  YieldNotSupported: "Only MUSD circles can earn in the Mezo Stability Pool.",
+  StabilityPoolBusy: "Mezo is pausing Stability Pool withdrawals while a loan is being liquidated. Try again in a few minutes.",
+  NothingToFinalize: "This circle's collateral has already been returned.",
+  NothingToClaim: "You have no BTC earnings to claim yet.",
+  BtcTransferFailed: "Sending your BTC failed. Try again from a regular wallet address.",
+  ERC20InsufficientBalance: "Your token balance is too low for this.",
+  ERC20InsufficientAllowance: "Token spending wasn't approved. Try again and approve in your wallet.",
 };
 
 const isLocal = CONFIG.chainId === 31337;
+const isMezo = CONFIG.chainId === 31611 || CONFIG.chainId === 31612;
 const gasSymbol = CONFIG.nativeSymbol || "POT";
+
+// Savings tokens. Older configs had a single MockUSDT; keep them working.
+const TOKENS = (CONFIG.tokens && CONFIG.tokens.length)
+  ? CONFIG.tokens
+  : [{ symbol: "aUSD", address: CONFIG.contracts.MockUSDT, yield: false, faucet: true }];
+const MAIN = TOKENS[0];
+const tokenInfo = (addr) => TOKENS.find((t) => same(t.address, addr)) || { symbol: "tokens", address: addr };
 
 // ---------------------------------------------------------------------------
 // State + helpers
 // ---------------------------------------------------------------------------
-let provider, signer, me, manager, token, badge;
+let provider, signer, me, manager, badge;
+const tokenC = {}; // address(lowercase) -> ethers.Contract
 let refreshTimer;
 let filter = "all";
 let cache = []; // rendered circle data
@@ -137,7 +157,7 @@ function heroRing() {
       m.classList.toggle("now", k === i);
       m.classList.toggle("paid", k < i);
     });
-    $("ringCaption").textContent = `Round ${i + 1} of ${names.length}: ${names[i]} receives 60 aUSD`;
+    $("ringCaption").textContent = `Round ${i + 1} of ${names.length}: ${names[i]} receives 60 ${MAIN.symbol}`;
     i = (i + 1) % names.length;
   }
   step();
@@ -160,6 +180,7 @@ async function ensureChain() {
           chainName: CONFIG.chainName,
           rpcUrls: [CONFIG.rpcUrl],
           nativeCurrency: { name: gasSymbol, symbol: gasSymbol, decimals: 18 },
+          ...(CONFIG.explorer ? { blockExplorerUrls: [CONFIG.explorer] } : {}),
         }],
       });
     } else throw e;
@@ -169,7 +190,7 @@ async function ensureChain() {
 async function connect() {
   if (!window.ethereum) return toast("No wallet found. Install MetaMask, then reload this page.", "error");
   const c = CONFIG.contracts;
-  if (!c.AjoManager || !c.MockUSDT || !c.AjoBadge) {
+  if (!c.AjoManager || !c.AjoBadge) {
     return toast("Contract addresses are missing. Run the deploy script first.", "error");
   }
   try {
@@ -179,7 +200,7 @@ async function connect() {
     signer = await provider.getSigner();
     me = await signer.getAddress();
     manager = new ethers.Contract(c.AjoManager, MANAGER_ABI, signer);
-    token = new ethers.Contract(c.MockUSDT, TOKEN_ABI, signer);
+    for (const t of TOKENS) tokenC[t.address.toLowerCase()] = new ethers.Contract(t.address, TOKEN_ABI, signer);
     badge = new ethers.Contract(c.AjoBadge, BADGE_ABI, signer);
 
     const net = await provider.getNetwork();
@@ -232,16 +253,20 @@ async function send(label, done, fn) {
   }
 }
 
-async function ensureAllowance(amount) {
+async function ensureAllowance(tokenAddr, amount) {
+  const t = tokenInfo(tokenAddr);
+  const token = tokenC[tokenAddr.toLowerCase()] || new ethers.Contract(tokenAddr, TOKEN_ABI, signer);
   const bal = await token.balanceOf(me);
   if (bal < amount) {
-    toast(`You need ${fmt(amount)} aUSD but have ${fmt(bal)}. Use “Get 1,000 aUSD” first.`, "error");
-    $("faucetBtn").focus();
+    const how = t.faucet ? `Use “Get 1,000 ${t.symbol}” first.`
+      : t.symbol === "MUSD" ? "Borrow MUSD against test BTC in the Mezo testnet app first."
+      : `Get some ${t.symbol} from the Mezo faucet first.`;
+    toast(`You need ${fmt(amount)} ${t.symbol} but have ${fmt(bal)}. ${how}`, "error");
     return false;
   }
   const current = await token.allowance(me, CONFIG.contracts.AjoManager);
   if (current >= amount) return true;
-  return send("Approve aUSD", "Approved aUSD for AjoChain", () =>
+  return send(`Approve ${t.symbol}`, `Approved ${t.symbol} for AjoChain`, () =>
     token.approve(CONFIG.contracts.AjoManager, ethers.MaxUint256)
   );
 }
@@ -254,18 +279,22 @@ async function onCreate(ev) {
   const amount = ethers.parseUnits(String(f.get("amount")), 18);
   const members = Number(f.get("members"));
   const seconds = Math.round(Number(f.get("minutes")) * 60);
-  const btn = form.querySelector("button");
+  const t = TOKENS.find((x) => x.address === f.get("token")) || MAIN;
+  const earn = Boolean(t.yield && f.get("earn"));
+  const btn = form.querySelector("button[type=submit]");
   btn.disabled = true;
   const ok = await send(`Create “${name}”`, `Created circle “${name}”`, () =>
-    manager.createGroup(name, CONFIG.contracts.MockUSDT, amount, members, seconds)
+    manager.createGroup(name, t.address, amount, members, seconds, earn)
   );
   btn.disabled = false;
   if (ok) { form.reset(); updateFormSum(); }
 }
 
-const onJoin = async (id, amt) => (await ensureAllowance(amt)) && send(`Join circle #${id}`, `Joined circle #${id}`, () => manager.join(id));
-const onPay = async (id, amt) => (await ensureAllowance(amt)) && send(`Pay circle #${id}`, `Paid this round in circle #${id}`, () => manager.contribute(id));
+const onJoin = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Join circle #${id}`, `Joined circle #${id}`, () => manager.join(id));
+const onPay = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Pay circle #${id}`, `Paid this round in circle #${id}`, () => manager.contribute(id));
 const onClose = (id) => send(`Close round in #${id}`, `Closed the round in circle #${id}`, () => manager.closeRound(id));
+const onFinalize = (id) => send(`Return collateral in #${id}`, `Collateral returned in circle #${id}`, () => manager.finalizeRefunds(id));
+const onClaim = () => send("Claim BTC earnings", "Claimed your BTC earnings", () => manager.claimBTC());
 
 // ---------------------------------------------------------------------------
 // Data + rendering
@@ -277,18 +306,24 @@ function showGasWarning(show) {
     ? `<b>This wallet has no ETH on Hardhat Local, so it can't send transactions.</b><br>
        In MetaMask choose <b>Add account › Import account</b> and paste the private key of <b>Account #0</b>
        printed by <code>npm run node</code>, then switch to it.`
-    : `<b>This wallet has no ${gasSymbol} for gas.</b><br>
-       Request testnet ${gasSymbol} in the Portaldot Discord, then refresh this page.`;
+    : CONFIG.gasFaucet
+      ? `<b>This wallet has no ${gasSymbol} for gas.</b><br>
+       Get free testnet ${gasSymbol} from the <a href="${CONFIG.gasFaucet}" target="_blank" rel="noopener">Mezo faucet</a>, then refresh this page.`
+      : `<b>This wallet has no ${gasSymbol} for gas.</b><br>
+       Request testnet ${gasSymbol} from the network's faucet, then refresh this page.`;
   w.classList.remove("hidden");
 }
 
 async function refresh() {
   if (!manager) return;
   try {
-    const [bal, gas, nBadges, count] = await Promise.all([
-      token.balanceOf(me), provider.getBalance(me), badge.balanceOf(me), manager.groupCount(),
+    const [bal, gas, nBadges, count, owed] = await Promise.all([
+      tokenC[MAIN.address.toLowerCase()].balanceOf(me), provider.getBalance(me), badge.balanceOf(me),
+      manager.groupCount(), manager.btcOwed(me).catch(() => 0n),
     ]);
     $("statBal").textContent = fmt(bal);
+    $("statEarn").textContent = fmt(owed, 6);
+    $("claimBtn").classList.toggle("hidden", owed === 0n);
     $("statGasLabel").textContent = `${isLocal ? "ETH" : gasSymbol} for gas`;
     $("statGas").textContent = fmt(gas, 4);
     $("statBadges").textContent = nBadges.toString();
@@ -307,6 +342,7 @@ async function refresh() {
 
 async function loadCircle(id) {
   const [g, list] = await Promise.all([manager.getGroup(id), manager.getMembers(id)]);
+  const pos = g.earnsYield ? await manager.yieldPosition(id).catch(() => null) : null;
   const status = ["open", "active", "done"][Number(g.status)];
   const round = Number(g.currentRound);
   const members = await Promise.all(list.map(async (addr, i) => {
@@ -318,7 +354,7 @@ async function loadCircle(id) {
   }));
   const now = Math.floor(Date.now() / 1000);
   return {
-    id, g, status, round, members,
+    id, g, status, round, members, pos, sym: tokenInfo(g.token).symbol,
     total: Number(g.maxMembers),
     late: status === "active" && now > Number(g.roundDeadline),
     secsLeft: Number(g.roundDeadline) - now,
@@ -371,7 +407,7 @@ function miniRing(c) {
   return `<svg class="mini-ring" viewBox="0 0 150 150" aria-hidden="true">
     <circle class="track" cx="${C}" cy="${C}" r="${R}"></circle>${dots}
     <text class="center-amt" x="${C}" y="${C + 2}" text-anchor="middle">${pot}</text>
-    <text class="center-lbl" x="${C}" y="${C + 16}" text-anchor="middle">aUSD pot</text>
+    <text class="center-lbl" x="${C}" y="${C + 16}" text-anchor="middle">${esc(c.sym)} pot</text>
   </svg>`;
 }
 
@@ -383,7 +419,7 @@ function timeLeft(s) {
 }
 
 function circleCard(c) {
-  const { id, g, status, round, members, total } = c;
+  const { id, g, status, round, members, total, sym } = c;
   const contrib = fmt(g.contribution);
   const statusLabel = status === "open" ? `${total - members.length} seat${total - members.length === 1 ? "" : "s"} left`
     : status === "done" ? "Completed" : c.late ? "Round overdue" : `Round ${round + 1} of ${total}`;
@@ -412,11 +448,12 @@ function circleCard(c) {
         <span class="status ${statusCls}">${statusLabel}</span>
       </div>
       <div class="facts">
-        <div><span>Each round </span><b>${contrib} aUSD</b></div>
+        <div><span>Each round </span><b>${contrib} ${esc(sym)}</b></div>
         <div><span>Members </span><b>${members.length}/${total}</b></div>
         <div><span>Round length </span><b>${Math.round(Number(g.roundDuration) / 60)} min</b></div>
         ${status === "active" ? `<div><span>Deadline </span><b>${timeLeft(c.secsLeft)}</b></div>` : ""}
       </div>
+      ${yieldLine(c)}
       <ul class="members">${rows || `<li class="hint">No members yet. The first to join receives the first pot.</li>`}</ul>
       <div class="circle-actions"></div>
     </div>`;
@@ -431,13 +468,32 @@ function circleCard(c) {
   };
   const hint = (t) => actions.insertAdjacentHTML("beforeend", `<span class="hint">${t}</span>`);
 
-  if (status === "open" && !me) add(`Join and lock ${contrib} aUSD`, "btn-primary", () => onJoin(id, g.contribution));
+  if (status === "open" && !me) add(`Join and lock ${contrib} ${sym}`, "btn-primary", () => onJoin(id, g));
   if (status === "open" && me) hint("You're in. The circle starts when every seat is filled.");
-  if (status === "active" && me && !me.paid && !c.late) add(`Pay ${contrib} aUSD`, "btn-primary", () => onPay(id, g.contribution));
+  if (status === "active" && me && !me.paid && !c.late) add(`Pay ${contrib} ${sym}`, "btn-primary", () => onPay(id, g));
   if (status === "active" && me?.paid) hint("You've paid this round.");
   if (c.late) add("Close round", "btn-warn", () => onClose(id));
-  if (status === "done" && me && !me.missed) hint("Collateral returned. Your badge is in your wallet.");
+  if (g.refundPending) add("Return collateral", "btn-warn", () => onFinalize(id));
+  if (status === "done" && me && !me.missed && !g.refundPending) {
+    hint(g.earnsYield ? "Collateral returned and BTC earnings credited. Your badge is in your wallet."
+      : "Collateral returned. Your badge is in your wallet.");
+  }
   return el;
+}
+
+function yieldLine(c) {
+  const { g, status, pos } = c;
+  if (!g.earnsYield) return "";
+  if (status === "open") {
+    return `<p class="yield"><b>Earn while you save:</b> when the circle fills, everyone's collateral goes into Mezo's MUSD Stability Pool and earns BTC.</p>`;
+  }
+  if (g.refundPending) {
+    return `<p class="yield warn"><b>Collateral is still in the Stability Pool.</b> Mezo paused withdrawals during a liquidation. Anyone can press “Return collateral” once it's open again.</p>`;
+  }
+  if (status === "done") return `<p class="yield"><b>Earned in the Stability Pool.</b> Members' BTC share is ready to claim at the top of the page.</p>`;
+  const inPool = pos ? fmt(pos.musdInPool) : "-";
+  const btc = pos ? fmt(pos.btcEarned, 8) : "-";
+  return `<p class="yield"><b>Earning in Mezo's Stability Pool:</b> ${inPool} MUSD collateral deposited · <b>${btc} BTC</b> earned so far</p>`;
 }
 
 function updateFormSum() {
@@ -445,18 +501,39 @@ function updateFormSum() {
   const amt = Number(f.amount.value) || 0;
   const n = Number(f.members.value) || 0;
   const mins = Number(f.minutes.value) || 0;
+  const t = TOKENS.find((x) => x.address === f.token.value) || MAIN;
+  const sym = t.symbol;
+  f.earn.disabled = !t.yield;
+  if (!t.yield) f.earn.checked = false;
+  $("earnRow").classList.toggle("off", !t.yield);
+  const earn = t.yield && f.earn.checked;
   $("formSum").innerHTML = amt && n
-    ? `Each member pays <b>${amt.toLocaleString()} aUSD</b> per round and locks the same as collateral. Each pot is <b>${(amt * n).toLocaleString()} aUSD</b>. The full cycle takes <b>${n} rounds</b> (about ${Math.round((n * mins) / 6) / 10 || "<1"} h).`
+    ? `Each member pays <b>${amt.toLocaleString()} ${sym}</b> per round and locks the same as collateral. Each pot is <b>${(amt * n).toLocaleString()} ${sym}</b>. The full cycle takes <b>${n} rounds</b> (about ${Math.round((n * mins) / 6) / 10 || "<1"} h).${earn ? ` While it runs, the <b>${(amt * n).toLocaleString()} ${sym}</b> of collateral earns BTC in Mezo's Stability Pool.` : ""}`
     : "";
 }
 
 // ---------------------------------------------------------------------------
 // Wire up
 // ---------------------------------------------------------------------------
+// Token picker, help links and labels depend on the network config.
+$("tokenSelect").innerHTML = TOKENS.map((t) => `<option value="${t.address}">${esc(t.symbol)}</option>`).join("");
+document.querySelectorAll("[data-sym]").forEach((el) => (el.textContent = MAIN.symbol));
+document.querySelectorAll("[data-chain]").forEach((el) => (el.textContent = CONFIG.chainName));
+if (!TOKENS.some((t) => t.yield)) $("earnRow").classList.add("hidden");
+const faucetToken = TOKENS.find((t) => t.faucet);
+if (faucetToken) {
+  $("faucetBtn").textContent = `Get 1,000 ${faucetToken.symbol}`;
+} else {
+  $("faucetBtn").classList.add("hidden");
+}
+if (CONFIG.musdHelp) { $("getMusd").href = CONFIG.musdHelp; $("getMusd").classList.remove("hidden"); }
+if (CONFIG.gasFaucet) { $("getGas").href = CONFIG.gasFaucet; $("getGas").classList.remove("hidden"); }
+
 heroRing();
 updateFormSum();
 
-const contractList = Object.entries(CONFIG.contracts)
+const contractList = Object.entries(CONFIG.contracts).filter(([, v]) => v && v !== ethers.ZeroAddress)
+  .concat(TOKENS.map((t) => [t.symbol, t.address]))
   .map(([k, v]) => `<li><span>${k}</span><code>${v || "not deployed"}</code></li>`).join("");
 $("contracts").innerHTML = contractList;
 
@@ -468,9 +545,11 @@ $("acctBtn").onclick = async () => {
 $("createForm").onsubmit = onCreate;
 $("createForm").oninput = updateFormSum;
 $("refreshBtn").onclick = refresh;
+$("claimBtn").onclick = async (ev) => { ev.target.disabled = true; await onClaim(); ev.target.disabled = false; };
 $("faucetBtn").onclick = async (ev) => {
   ev.target.disabled = true;
-  await send("Claim aUSD", "Claimed 1,000 aUSD", () => token.faucet());
+  const c = tokenC[faucetToken.address.toLowerCase()];
+  await send(`Claim ${faucetToken.symbol}`, `Claimed 1,000 ${faucetToken.symbol}`, () => c.faucet());
   ev.target.disabled = false;
 };
 document.querySelectorAll(".tab").forEach((t) => {
