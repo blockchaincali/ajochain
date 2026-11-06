@@ -5,6 +5,7 @@
 AjoChain runs rotating savings circles (ajo, esusu, adashe) as smart contracts on **Mezo**, saved in **MUSD**, Mezo's stablecoin backed by Bitcoin. Nobody holds the pot, missed payments are covered by collateral, and every clean cycle mints a soulbound savings badge. The new part for Mezo is **Earn while you save**: the collateral each member locks for the whole cycle goes into Mezo's **MUSD Stability Pool**, where it earns BTC from liquidations instead of sitting idle.
 
 - **Track:** Mezo Buildathon 2026, Track 1 (DeFi: yield) with Track 2 reach (savings for people who already use ajo)
+- **Live dApp:** https://ajochain-frontend.vercel.app
 - **Chain:** Mezo testnet (chain ID 31611)
 - **Origin:** AjoChain started at Portaldot Hacker House 2026 (frozen on branch [`portaldot-final`](../../tree/portaldot-final)). Everything above "Original AjoChain" is new for the Mezo Buildathon.
 
@@ -44,8 +45,8 @@ In Nigeria, ajo is how millions of traders and workers save, but the naira loses
 | MUSD | `0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503` | mezo.org/docs, mezo-org/musd `deployments/matsnet` |
 | StabilityPool | `0x1CCA7E410eE41739792eA0A24e00349Dd247680e` | mezo-org/musd `deployments/matsnet` |
 | MEZO | `0x7b7c000000000000000000000000000000000001` | mezod MEZO token precompile |
-| AjoManager | *(filled in by `npm run deploy:mezo`)* | |
-| AjoBadge | *(filled in by `npm run deploy:mezo`)* | |
+| AjoManager | `0xD9f1Fb1D6f634696763A345890F32C50603B653A` | deployed by `npm run deploy:mezo` |
+| AjoBadge | `0x9a4720B2B3D607EE9c382Ec1369cb748236E535c` | deployed by `npm run deploy:mezo` |
 
 ## Deploy to Mezo testnet
 
