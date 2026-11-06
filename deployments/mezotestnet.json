@@ -1,0 +1,28 @@
+{
+  "network": "mezotestnet",
+  "contracts": {
+    "MUSD": {
+      "address": "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503",
+      "external": true
+    },
+    "StabilityPool": {
+      "address": "0x1CCA7E410eE41739792eA0A24e00349Dd247680e",
+      "external": true
+    },
+    "MEZO": {
+      "address": "0x7b7c000000000000000000000000000000000001",
+      "external": true
+    },
+    "AjoBadge": {
+      "address": "0x9a4720B2B3D607EE9c382Ec1369cb748236E535c",
+      "txHash": "0x08534624e60d393b2277cde1790cbb2efeadc366a3c4efebb73b8c8ef81e3473"
+    },
+    "AjoManager": {
+      "address": "0xD9f1Fb1D6f634696763A345890F32C50603B653A",
+      "txHash": "0x3e74bfc65a73e97c4a9811bf3b2663112378c16f71c0199120f2490e13b5fea2"
+    }
+  },
+  "chainId": 31611,
+  "deployer": "0x9FC79E370C3c37De07B42513E13E7f1d4dB8D223",
+  "setMinterTx": "0x4022aedce677e4a4aced7eb218555dfd3c6e3ecc83dc942e3e58b2591b8e6863"
+}
