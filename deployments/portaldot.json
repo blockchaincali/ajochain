@@ -4,6 +4,10 @@
     "MockUSDT": {
       "address": "0x3Ce64f4776E26c4A930d1fdfCeD1acfBec5cC551",
       "txHash": "0x96eb3ed2cea77fa6fb81b625f43ce03f55e8306945bad597b0a51ab8363ce2c7"
+    },
+    "AjoBadge": {
+      "address": "0x9a4720B2B3D607EE9c382Ec1369cb748236E535c",
+      "txHash": "0x4ebde3382bd324c90a5b0596477832c2151c20903e4e72d2d48d8ca99327887f"
     }
   },
   "chainId": 420420777,
