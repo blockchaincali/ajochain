@@ -72,13 +72,8 @@ const tokenInfo = (addr) => TOKENS.find((t) => same(t.address, addr)) || { symbo
 // ---------------------------------------------------------------------------
 // State + helpers
 // ---------------------------------------------------------------------------
-// Writes go through the wallet; reads go straight to the RPC (`reader`) so the
-// page doesn't queue dozens of calls in MetaMask and delay its popups.
-let provider, reader, signer, me, manager, badge, managerR, badgeR;
-const tokenC = {}; // address(lowercase) -> ethers.Contract for writes
-const tokenR = {}; // address(lowercase) -> ethers.Contract for reads
-let lastGas; // gas balance from the last refresh (undefined = unknown)
-let busy = 0; // transactions in flight; auto-refresh pauses meanwhile
+let provider, signer, me, manager, badge;
+const tokenC = {}; // address(lowercase) -> ethers.Contract
 let refreshTimer;
 let filter = "all";
 let cache = []; // rendered circle data
@@ -202,18 +197,11 @@ async function connect() {
     await window.ethereum.request({ method: "eth_requestAccounts" });
     await ensureChain();
     provider = new ethers.BrowserProvider(window.ethereum);
-    provider.pollingInterval = 1000;
     signer = await provider.getSigner();
     me = await signer.getAddress();
-    reader = await makeReader();
     manager = new ethers.Contract(c.AjoManager, MANAGER_ABI, signer);
-    managerR = new ethers.Contract(c.AjoManager, MANAGER_ABI, reader);
-    for (const t of TOKENS) {
-      tokenC[t.address.toLowerCase()] = new ethers.Contract(t.address, TOKEN_ABI, signer);
-      tokenR[t.address.toLowerCase()] = new ethers.Contract(t.address, TOKEN_ABI, reader);
-    }
+    for (const t of TOKENS) tokenC[t.address.toLowerCase()] = new ethers.Contract(t.address, TOKEN_ABI, signer);
     badge = new ethers.Contract(c.AjoBadge, BADGE_ABI, signer);
-    badgeR = new ethers.Contract(c.AjoBadge, BADGE_ABI, reader);
 
     const net = await provider.getNetwork();
     const onRightChain = Number(net.chainId) === CONFIG.chainId;
@@ -230,7 +218,7 @@ async function connect() {
 
     await refresh();
     clearInterval(refreshTimer);
-    refreshTimer = setInterval(() => { if (!busy && !document.hidden) refresh(); }, 15000);
+    refreshTimer = setInterval(refresh, 15000);
   } catch (e) {
     toast(explain(e), "error");
   }
@@ -239,65 +227,36 @@ async function connect() {
 // ---------------------------------------------------------------------------
 // Transactions
 // ---------------------------------------------------------------------------
-/// Direct JSON-RPC reader for the configured chain, falling back to the wallet
-/// if the RPC can't be reached from the browser (e.g. CORS).
-async function makeReader() {
-  if (!CONFIG.rpcUrl) return provider;
-  try {
-    const r = new ethers.JsonRpcProvider(CONFIG.rpcUrl, CONFIG.chainId, { staticNetwork: true });
-    r.pollingInterval = 1000;
-    await r.getBlockNumber();
-    return r;
-  } catch (e) {
-    console.warn("Direct RPC unavailable, reading through the wallet instead", e);
-    return provider;
-  }
+async function hasGas() {
+  const bal = await provider.getBalance(me);
+  if (bal > 0n) return true;
+  showGasWarning(true);
+  toast(`You need ${gasSymbol} for gas before you can do this.`, "error");
+  return false;
 }
 
-/// Wait for a receipt by polling the fast reader, not the wallet.
-async function confirm(tx) {
-  const rc = await reader.waitForTransaction(tx.hash, 1, 180000);
-  if (!rc) throw new Error("The network is slow to confirm. Check the explorer, then press Refresh.");
-  if (rc.status === 0) throw new Error("The transaction failed on-chain.");
-  return rc;
-}
-
-/// Send a transaction. The wallet popup opens immediately: no network calls
-/// happen before `fn()`. If `circleId` is given, that circle reloads first.
-async function send(label, done, fn, circleId) {
-  if (lastGas === 0n) {
-    showGasWarning(true);
-    toast(`You need ${gasSymbol} for gas before you can do this.`, "error");
-    return false;
-  }
-  busy++;
+async function send(label, done, fn) {
   try {
+    if (!(await hasGas())) return false;
     toast(`${label}: confirm in your wallet`);
     const tx = await fn();
-    toast(`${label}: sent, confirming…`);
-    await confirm(tx);
+    toast(`${label}: waiting for the network`);
+    await tx.wait();
     log(done, tx.hash);
     toast(done, "ok");
-    if (circleId) await refreshCircle(circleId);
-    refresh(); // stats + everything else, in the background
+    await refresh();
     return true;
   } catch (e) {
     console.error(e);
     toast(explain(e), "error");
     return false;
-  } finally {
-    busy--;
   }
 }
 
 async function ensureAllowance(tokenAddr, amount) {
   const t = tokenInfo(tokenAddr);
   const token = tokenC[tokenAddr.toLowerCase()] || new ethers.Contract(tokenAddr, TOKEN_ABI, signer);
-  const tokenRead = tokenR[tokenAddr.toLowerCase()] || new ethers.Contract(tokenAddr, TOKEN_ABI, reader);
-  const [bal, current] = await Promise.all([
-    tokenRead.balanceOf(me),
-    tokenRead.allowance(me, CONFIG.contracts.AjoManager),
-  ]);
+  const bal = await token.balanceOf(me);
   if (bal < amount) {
     const how = t.faucet ? `Use “Get 1,000 ${t.symbol}” first.`
       : t.symbol === "MUSD" ? "Borrow MUSD against test BTC in the Mezo testnet app first."
@@ -305,6 +264,7 @@ async function ensureAllowance(tokenAddr, amount) {
     toast(`You need ${fmt(amount)} ${t.symbol} but have ${fmt(bal)}. ${how}`, "error");
     return false;
   }
+  const current = await token.allowance(me, CONFIG.contracts.AjoManager);
   if (current >= amount) return true;
   return send(`Approve ${t.symbol}`, `Approved ${t.symbol} for AjoChain`, () =>
     token.approve(CONFIG.contracts.AjoManager, ethers.MaxUint256)
@@ -330,10 +290,10 @@ async function onCreate(ev) {
   if (ok) { form.reset(); updateFormSum(); }
 }
 
-const onJoin = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Join circle #${id}`, `Joined circle #${id}`, () => manager.join(id), id);
-const onPay = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Pay circle #${id}`, `Paid this round in circle #${id}`, () => manager.contribute(id), id);
-const onClose = (id) => send(`Close round in #${id}`, `Closed the round in circle #${id}`, () => manager.closeRound(id), id);
-const onFinalize = (id) => send(`Return collateral in #${id}`, `Collateral returned in circle #${id}`, () => manager.finalizeRefunds(id), id);
+const onJoin = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Join circle #${id}`, `Joined circle #${id}`, () => manager.join(id));
+const onPay = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Pay circle #${id}`, `Paid this round in circle #${id}`, () => manager.contribute(id));
+const onClose = (id) => send(`Close round in #${id}`, `Closed the round in circle #${id}`, () => manager.closeRound(id));
+const onFinalize = (id) => send(`Return collateral in #${id}`, `Collateral returned in circle #${id}`, () => manager.finalizeRefunds(id));
 const onClaim = () => send("Claim BTC earnings", "Claimed your BTC earnings", () => manager.claimBTC());
 
 // ---------------------------------------------------------------------------
@@ -358,10 +318,9 @@ async function refresh() {
   if (!manager) return;
   try {
     const [bal, gas, nBadges, count, owed] = await Promise.all([
-      tokenR[MAIN.address.toLowerCase()].balanceOf(me), reader.getBalance(me), badgeR.balanceOf(me),
-      managerR.groupCount(), managerR.btcOwed(me).catch(() => 0n),
+      tokenC[MAIN.address.toLowerCase()].balanceOf(me), provider.getBalance(me), badge.balanceOf(me),
+      manager.groupCount(), manager.btcOwed(me).catch(() => 0n),
     ]);
-    lastGas = gas;
     $("statBal").textContent = fmt(bal);
     $("statEarn").textContent = fmt(owed, 6);
     $("claimBtn").classList.toggle("hidden", owed === 0n);
@@ -381,26 +340,15 @@ async function refresh() {
   }
 }
 
-async function refreshCircle(id) {
-  try {
-    const c = await loadCircle(id);
-    const i = cache.findIndex((x) => x.id === id);
-    if (i >= 0) cache[i] = c; else cache.unshift(c);
-    renderCircles();
-  } catch (e) {
-    console.error(e);
-  }
-}
-
 async function loadCircle(id) {
-  const [g, list] = await Promise.all([managerR.getGroup(id), managerR.getMembers(id)]);
-  const pos = g.earnsYield ? await managerR.yieldPosition(id).catch(() => null) : null;
+  const [g, list] = await Promise.all([manager.getGroup(id), manager.getMembers(id)]);
+  const pos = g.earnsYield ? await manager.yieldPosition(id).catch(() => null) : null;
   const status = ["open", "active", "done"][Number(g.status)];
   const round = Number(g.currentRound);
   const members = await Promise.all(list.map(async (addr, i) => {
     const [paid, missed] = await Promise.all([
-      status === "active" ? managerR.paidInRound(id, round, addr) : false,
-      managerR.hasDefaulted(id, addr),
+      status === "active" ? manager.paidInRound(id, round, addr) : false,
+      manager.hasDefaulted(id, addr),
     ]);
     return { addr, i, paid, missed, isMe: same(addr, me) };
   }));
@@ -515,13 +463,7 @@ function circleCard(c) {
     const b = document.createElement("button");
     b.className = `btn ${cls} btn-sm`;
     b.textContent = label;
-    b.onclick = async () => {
-      b.disabled = true;
-      b.textContent = "Check your wallet…";
-      await fn();
-      b.disabled = false;
-      b.textContent = label;
-    };
+    b.onclick = async () => { b.disabled = true; await fn(); b.disabled = false; };
     actions.appendChild(b);
   };
   const hint = (t) => actions.insertAdjacentHTML("beforeend", `<span class="hint">${t}</span>`);
