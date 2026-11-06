@@ -39,6 +39,17 @@ const TOKEN_ABI = [
   "function faucet()",
 ];
 const BADGE_ABI = ["function balanceOf(address) view returns (uint256)"];
+// Mezo MUSD system contracts, used to detect and clear a blocked Stability Pool.
+const SP_ABI = ["function withdrawFromSP(uint256)"];
+const TM_ABI = [
+  "function getCurrentICR(address, uint256) view returns (uint256)",
+  "function batchLiquidateTroves(address[])",
+];
+const SORTED_ABI = ["function getLast() view returns (address)", "function getPrev(address) view returns (address)"];
+const FEED_ABI = ["function fetchPrice() view returns (uint256)"];
+const MCR = 11n * 10n ** 17n; // 110%: troves below this block Stability Pool withdrawals
+const canUnblock = Boolean(CONFIG.contracts.TroveManager && CONFIG.contracts.SortedTroves && CONFIG.contracts.PriceFeed);
+let poolBlocked = false; // last known Stability Pool state
 
 const FRIENDLY = {
   InvalidParams: "Check the form: 2–20 members, a contribution above 0, and rounds of at least 1 minute.",
@@ -50,7 +61,7 @@ const FRIENDLY = {
   AlreadyPaid: "You've already paid for this round.",
   RoundStillOpen: "The round can only be closed after its deadline.",
   YieldNotSupported: "Only MUSD circles can earn in the Mezo Stability Pool.",
-  StabilityPoolBusy: "Mezo is pausing Stability Pool withdrawals while a loan is being liquidated. Try again in a few minutes.",
+  StabilityPoolBusy: "Mezo's Stability Pool is paused until an under-collateralized loan is liquidated. Press “Unblock pool” on the circle, then try again.",
   NothingToFinalize: "This circle's collateral has already been returned.",
   NothingToClaim: "You have no BTC earnings to claim yet.",
   BtcTransferFailed: "Sending your BTC failed. Try again from a regular wallet address.",
@@ -103,6 +114,8 @@ function explain(e) {
   // 1. Contract custom errors (decoded via the ABI).
   const name = e?.revert?.name;
   if (name && FRIENDLY[name]) return FRIENDLY[name];
+  const data = [e?.data, e?.info?.error?.data, e?.error?.data].find((d) => typeof d === "string") || "";
+  if (data.startsWith("0x874d383c")) return FRIENDLY.StabilityPoolBusy; // StabilityPoolBusy()
   if (name) return name;
 
   // 2. Wallet / node errors, which ethers often wraps as "could not coalesce error".
@@ -292,8 +305,73 @@ async function onCreate(ev) {
 
 const onJoin = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Join circle #${id}`, `Joined circle #${id}`, () => manager.join(id));
 const onPay = async (id, g) => (await ensureAllowance(g.token, g.contribution)) && send(`Pay circle #${id}`, `Paid this round in circle #${id}`, () => manager.contribute(id));
-const onClose = (id) => send(`Close round in #${id}`, `Closed the round in circle #${id}`, () => manager.closeRound(id));
-const onFinalize = (id) => send(`Return collateral in #${id}`, `Collateral returned in circle #${id}`, () => manager.finalizeRefunds(id));
+const POOL_BUSY_MSG = "Mezo's Stability Pool is paused: a Mezo loan has dropped below 110% collateral and hasn't been liquidated yet. Press “Unblock pool” to liquidate it (you earn Mezo's liquidation reward), then try again.";
+
+// Yield circles need the pool open; check first so the wallet never shows a
+// failing transaction.
+async function poolGate(g) {
+  if (!g.earnsYield) return true;
+  poolBlocked = await checkPoolBlocked();
+  if (!poolBlocked) return true;
+  renderCircles();
+  toast(canUnblock ? POOL_BUSY_MSG : "Mezo's Stability Pool is paused while a loan waits to be liquidated. Try again in a few minutes.", "error");
+  return false;
+}
+const onClose = async (id, g) => (await poolGate(g)) && send(`Close round in #${id}`, `Closed the round in circle #${id}`, () => manager.closeRound(id));
+const onFinalize = async (id, g) => (await poolGate(g)) && send(`Return collateral in #${id}`, `Collateral returned in circle #${id}`, () => manager.finalizeRefunds(id));
+
+/// True if Mezo's Stability Pool currently refuses withdrawals (a trove is below MCR).
+async function checkPoolBlocked() {
+  const sp = CONFIG.contracts.StabilityPool;
+  if (!sp || sp === ethers.ZeroAddress) return false;
+  try {
+    const data = new ethers.Interface(SP_ABI).encodeFunctionData("withdrawFromSP", [1n]);
+    await provider.call({ to: sp, from: CONFIG.contracts.AjoManager, data });
+    return false;
+  } catch (e) {
+    const raw = [e?.reason, e?.shortMessage, e?.info?.error?.message, e?.message].filter(Boolean).join(" ");
+    return /ICR < MCR/.test(raw);
+  }
+}
+
+/// Find troves below 110% collateral, lowest first (at most `max`).
+async function findBadTroves(max = 10) {
+  const tm = new ethers.Contract(CONFIG.contracts.TroveManager, TM_ABI, provider);
+  const sorted = new ethers.Contract(CONFIG.contracts.SortedTroves, SORTED_ABI, provider);
+  const price = await new ethers.Contract(CONFIG.contracts.PriceFeed, FEED_ABI, provider).fetchPrice();
+  const bad = [];
+  let cur = await sorted.getLast();
+  while (bad.length < max && cur !== ethers.ZeroAddress) {
+    if ((await tm.getCurrentICR(cur, price)) >= MCR) break;
+    bad.push(cur);
+    cur = await sorted.getPrev(cur);
+  }
+  return bad;
+}
+
+/// Liquidate the troves that block the pool. Permissionless: anyone can do
+/// it, and Mezo pays the liquidator a reward in MUSD and BTC.
+async function onUnblock() {
+  try {
+    toast("Looking for Mezo loans below 110% collateral…");
+    const bad = await findBadTroves();
+    if (bad.length === 0) {
+      poolBlocked = await checkPoolBlocked();
+      toast(poolBlocked ? "Still paused. Try again in a moment." : "The Stability Pool is open again.", poolBlocked ? "error" : "ok");
+      return refresh();
+    }
+    const tm = new ethers.Contract(CONFIG.contracts.TroveManager, TM_ABI, signer);
+    const ok = await send(
+      "Unblock pool",
+      `Liquidated ${bad.length} Mezo loan${bad.length === 1 ? "" : "s"}. The pool is open and this circle earned from it.`,
+      () => tm.batchLiquidateTroves(bad)
+    );
+    if (ok) poolBlocked = await checkPoolBlocked();
+  } catch (e) {
+    console.error(e);
+    toast(explain(e), "error");
+  }
+}
 const onClaim = () => send("Claim BTC earnings", "Claimed your BTC earnings", () => manager.claimBTC());
 
 // ---------------------------------------------------------------------------
@@ -332,6 +410,8 @@ async function refresh() {
     const ids = [];
     for (let i = Number(count); i >= 1; i--) ids.push(i);
     cache = await Promise.all(ids.map(loadCircle));
+    const needsPool = cache.some((c) => c.g.earnsYield && (c.late || c.g.refundPending));
+    poolBlocked = needsPool ? await checkPoolBlocked() : false;
     $("statJoined").textContent = cache.filter((c) => c.amMember).length;
     renderCircles();
   } catch (e) {
@@ -472,8 +552,10 @@ function circleCard(c) {
   if (status === "open" && me) hint("You're in. The circle starts when every seat is filled.");
   if (status === "active" && me && !me.paid && !c.late) add(`Pay ${contrib} ${sym}`, "btn-primary", () => onPay(id, g));
   if (status === "active" && me?.paid) hint("You've paid this round.");
-  if (c.late) add("Close round", "btn-warn", () => onClose(id));
-  if (g.refundPending) add("Return collateral", "btn-warn", () => onFinalize(id));
+  const stuck = g.earnsYield && poolBlocked && (c.late || g.refundPending);
+  if (stuck && canUnblock) add("Unblock pool", "btn-gold", onUnblock);
+  if (c.late) add("Close round", "btn-warn", () => onClose(id, g));
+  if (g.refundPending) add("Return collateral", "btn-warn", () => onFinalize(id, g));
   if (status === "done" && me && !me.missed && !g.refundPending) {
     hint(g.earnsYield ? "Collateral returned and BTC earnings credited. Your badge is in your wallet."
       : "Collateral returned. Your badge is in your wallet.");
@@ -484,6 +566,9 @@ function circleCard(c) {
 function yieldLine(c) {
   const { g, status, pos } = c;
   if (!g.earnsYield) return "";
+  if (poolBlocked && (c.late || g.refundPending)) {
+    return `<p class="yield warn"><b>Mezo's Stability Pool is paused.</b> A Mezo loan fell below 110% collateral and hasn't been liquidated, so nobody can withdraw yet.${canUnblock ? " Press “Unblock pool” to liquidate it: you earn Mezo's liquidation reward and this circle earns BTC." : " Try again in a few minutes."}</p>`;
+  }
   if (status === "open") {
     return `<p class="yield"><b>Earn while you save:</b> when the circle fills, everyone's collateral goes into Mezo's MUSD Stability Pool and earns BTC.</p>`;
   }

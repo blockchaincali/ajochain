@@ -20,6 +20,10 @@ const MEZO_TESTNET = {
   MUSD: "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503",
   StabilityPool: "0x1CCA7E410eE41739792eA0A24e00349Dd247680e",
   MEZO: "0x7b7c000000000000000000000000000000000001",
+  // Used by the app's "Unblock pool" button (liquidates troves below 110%).
+  TroveManager: "0xE47c80e8c23f6B4A1aE41c34837a0599D5D16bb0",
+  SortedTroves: "0x722E4D24FD6Ff8b0AC679450F3D91294607268fA",
+  PriceFeed: "0x86bCF0841622a5dAC14A313a15f96A95421b9366",
 };
 
 const NETWORKS = {
@@ -158,6 +162,13 @@ async function main() {
       AjoManager: managerAddr,
       AjoBadge: await badge.getAddress(),
       StabilityPool: pool,
+      ...(isMezo
+        ? {
+            TroveManager: MEZO_TESTNET.TroveManager,
+            SortedTroves: MEZO_TESTNET.SortedTroves,
+            PriceFeed: MEZO_TESTNET.PriceFeed,
+          }
+        : {}),
     },
   };
   const cfgFile = path.join(__dirname, "..", "frontend", "config.js");
