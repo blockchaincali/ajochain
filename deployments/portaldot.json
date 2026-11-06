@@ -8,8 +8,13 @@
     "AjoBadge": {
       "address": "0x9a4720B2B3D607EE9c382Ec1369cb748236E535c",
       "txHash": "0x4ebde3382bd324c90a5b0596477832c2151c20903e4e72d2d48d8ca99327887f"
+    },
+    "AjoManager": {
+      "address": "0xD9f1Fb1D6f634696763A345890F32C50603B653A",
+      "txHash": "0xccf1708166ead6367367492c6979f62ac4ed82f65bde711bf9c0b3ad0cdcce27"
     }
   },
   "chainId": 420420777,
-  "deployer": "0x9FC79E370C3c37De07B42513E13E7f1d4dB8D223"
+  "deployer": "0x9FC79E370C3c37De07B42513E13E7f1d4dB8D223",
+  "setMinterTx": "0x636f3b5a800a5889ba28dc68978a9026c0d4acb0ebe267bea40e5835517b9827"
 }

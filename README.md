@@ -1,40 +1,78 @@
-# Auvra Creative Studio V2 — Remotion upgrade
+# Auvra Motion V4 — 30-second visual proof
 
-## Scope and baseline
+This is a **standalone Remotion motion-graphics proof**, not a production Creative Studio upgrade or an autonomous video-generating agent yet. It adds four files; it does **not** replace `composition.tsx`, `renderer.ts`, your API routes, or the V3 sample. There are no Orbio/API calls and no cost to any inference allowance. Real rendering uses local CPU, RAM and storage.
 
-Source checked against `Blockboiy/Auvra`, branch `feat/creative-studio-remotion`, commit `7331f10971c1cd060fffd2274c53b225cbb60ba3` (2026-09-24).
+## What it shows
 
-Adds a Remotion React composition, server-side H.264 renderer, 1080x1920/1920x1080 at 30 FPS, three scenes / up to six image shots, safer staging, MP4 metadata checks and a smoke-test. Source image preservation is improved; original FFmpeg renderer remains as a non-destructive fallback. No paid video generation or synthesized voiceover.
+- **00–05 / The problem:** three overlapping model windows and progressively revealed copy converge toward a single workspace.
+- **05–09 / One mission:** model chips move into the real Auvra monogram, surrounded by an animated orbit.
+- **09–15 / Multi-model workflow:** moving signals travel along distinct connectors; each named node has a visual role.
+- **15–20 / Guardrails:** a budget dial and three illustrated controls appear one at a time (illustrative UI; not actual account settings).
+- **20–26 / Execution:** a growing vertical path connects planning, executing and verifying, with synchronized check states.
+- **26–30 / Brand close:** logo, staggered typography, final message and website.
 
-**This upgrade is not live.** The source package is prepared, but a real MP4 run in the target project still must pass after dependencies are installed. Do not turn on the Remotion flag in Railway before that verification.
+The preview includes an **original procedurally synthesized ambient music bed and transition cues**, not speech. It does not claim the video contains recorded narration or new AI footage. The code uses the existing Remotion packages already installed in your Auvra checkout.
 
-## Safe installation (no Codex account/credit needed)
+## Installation — Git Bash (no Python or Codex)
 
-1. Extract this ZIP **outside the Auvra checkout** (for example, into Downloads). Do not drag-copy individual files into the repository.
-2. In Git Bash or another terminal, `cd` to your existing Auvra repository on `feat/creative-studio-remotion`.
-3. Run `python "/path/to/auvra-remotion-upgrade/scripts/apply-upgrade.py" --check` (on Windows use your actual path to the extracted folder). This checks the branch and hashes of files to be modified; it never overwrites local changes.
-4. If the check succeeds, run the same command without `--check`. Originals are retained in `.auvra-remotion-originals/`.
-5. Run `corepack pnpm install` to regenerate `pnpm-lock.yaml`. The new dependencies cannot be used with the old frozen lockfile.
-6. Run `corepack pnpm build`, `corepack pnpm typecheck`, `corepack pnpm lint`, and `corepack pnpm test`.
-7. Run `node "/path/to/auvra-remotion-upgrade/scripts/smoke-render.mjs"`. It creates `auvra-remotion-smoke.mp4` in the repo root without using Orbio.
-8. View the MP4, verify that the text stays sharp, and inspect `git diff` and `git status --short` before selecting files to commit. **Do not commit unrelated files.**
+Download `auvra-motion-v4.zip` to `~/Downloads` and enter these commands **one at a time**:
 
-Run with `AUVRA_CREATIVE_RENDERER=remotion` to use the new engine; without this flag the existing FFmpeg renderer is used. Keep `AUVRA_CREATIVE_ENABLED=true` and your existing account/session configuration as before.
+```bash
+cd ~/Downloads
+unzip -o auvra-motion-v4.zip -d ~/Downloads
+cd ~/projects/Auvra
+node ~/Downloads/auvra-motion-v4/tools/apply-v4.mjs --check
+```
 
-For example in Git Bash: `AUVRA_CREATIVE_RENDERER=remotion corepack pnpm --filter @auvra/api dev` (after the build).
+Only if the last command says `DRY RUN PASSED`, run:
 
-## Deployment considerations
+```bash
+node ~/Downloads/auvra-motion-v4/tools/apply-v4.mjs --apply
+corepack pnpm --filter @auvra/api build
+```
 
-The included Dockerfile change adds Debian Chromium and sets `REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium` so the server need not download a browser at runtime. This changes image size and resource requirements. Rendering 450/900 frames at 1080p can be expensive on small Railway instances; the renderer limits concurrency to 1 and cancels after 12 minutes, but larger instances or a dedicated worker may be needed.
+For the **first preview**, use the small-format output. The script logs bundle/browser/render/verification stages and percentage updates so it no longer looks frozen:
 
-`AUVRA_CREATIVE_RENDERER=remotion` must be set explicitly after the smoke test. Use an adequately provisioned instance and persistent `AUVRA_CREATIVE_DIR` if projects must survive deployments. Old projects stay readable.
+```bash
+node scripts/v4-preview.mjs --preview
+explorer.exe auvra-motion-v4-preview.mp4
+```
 
-## Security and cost
+After visually approving that preview, an optional full-size 1080×1920 render is:
 
-Only generated `product1...product6` image names are copied into the isolated temporary public directory. The renderer never calls Orbio; inference costs remain unchanged. Rendering uses local compute and disk, which are not metered in the application's `renderCostUsd: 0` field. The protected demo remains shared-password access; uploaded images are not per-user isolated.
+```bash
+node scripts/v4-preview.mjs --full
+explorer.exe auvra-motion-v4-full.mp4
+```
 
-## Source status
+The full render is 900 frames at 1080×1920, so allow substantial rendering time. First run may need Chromium download; subsequent runs reuse the installed browser. An optional silent preview is `node scripts/v4-preview.mjs --preview --silent`.
 
-The implementation package is prepared against the verified branch, but this isolated environment lacks network access to install the Remotion/npm dependencies and cannot access the GitHub account with push permissions. Therefore full workspace tests and real Remotion MP4 output are **not claimed** here. The installer is syntax-tested and tested against representative baseline fixtures; full runtime validation is required before deployment.
+Run workspace checks separately as usual:
 
-Docs: https://www.remotion.dev/docs/renderer/render-media and https://www.remotion.dev/docs/bundle
+```bash
+corepack pnpm typecheck
+corepack pnpm lint
+corepack pnpm test
+```
+
+## Configurable creative copy
+
+Edit `scripts/v4-plan.json` after installation to change the brief-supported copy. The preview script validates basic field types and lengths. The six **visual treatments remain Auvra-specific**; changing copy does not make it an autonomous AI art director. That is a separate future implementation.
+
+## Audio and verification
+
+The render script generates a local 30s WAV in a temporary asset directory and the Remotion composition includes it through `<Audio>`. Rendering is not muted by default. The script verifies MP4 dimensions, frame rate, codec, duration and minimum file size; visual judgment still requires watching the output. If you have ffprobe, audio can be independently checked with:
+
+```bash
+ffprobe -v error -show_entries stream=codec_type,codec_name -of default=noprint_wrappers=1 auvra-motion-v4-preview.mp4
+```
+
+A successful result should include video and audio streams unless `--silent` was selected.
+
+## Safety and rollback
+
+The installer requires `feat/creative-studio-remotion`, verifies V3 is present, refuses to overwrite any of its four destination files, and leaves all unrelated tracked/untracked changes alone. Output MP4s stay untracked; don't run `git add .`. If needed, `node ~/Downloads/auvra-motion-v4/tools/apply-v4.mjs --remove` deletes only the four V4 proof files **if none of them have been edited**. It never deletes existing V3 files.
+
+## Status / limits
+
+The source was syntax/transpilation checked and the installer was exercised against a test repository. An end-to-end Remotion MP4 cannot be rendered in the packaging environment because it cannot access npm to install Remotion dependencies. The actual video, appearance, and audio must be confirmed in your Windows Auvra checkout. Do **not** push, merge, set a Railway environment variable or claim live integration based on this proof alone.
