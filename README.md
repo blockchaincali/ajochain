@@ -22,6 +22,7 @@ In Nigeria, ajo is how millions of traders and workers save, but the naira loses
 | **Defaults paid from the pool** | If a member misses a round, `closeRound` withdraws their collateral from the pool with `withdrawFromSP`, so the recipient still gets the full pot. |
 | **End of cycle** | Members get their MUSD collateral back, pro rata to what they still have locked, and their share of the circle's BTC, which they withdraw with `claimBTC()`. |
 | **Pool safety** | Mezo blocks pool withdrawals while a loan is under-collateralized. `closeRound` reverts with `StabilityPoolBusy` and can be retried. The **final payout is never blocked**: refunds are marked pending and anyone can call `finalizeRefunds()` later. If a deposit fails, the circle still starts with idle collateral. |
+| **One-click pool unblock** | When Mezo pauses the pool because a loan fell below 110% collateral, the app shows why and offers **Unblock pool**: it finds those troves (`SortedTroves`, `TroveManager.getCurrentICR`, `PriceFeed`) and liquidates them with `TroveManager.batchLiquidateTroves`. The user earns Mezo's liquidation reward, the pool reopens, and the circle's deposit earns the liquidated BTC. `scripts/unblock-pool.js` does the same from the command line. |
 
 ```
              ┌─────────────────────────────┐
