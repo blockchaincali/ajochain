@@ -6,6 +6,7 @@ AjoChain runs rotating savings circles (ajo, esusu, adashe) as smart contracts o
 
 - **Track:** Mezo Buildathon 2026, Track 1 (DeFi: yield) with Track 2 reach (savings for people who already use ajo)
 - **Live dApp:** https://ajochain-frontend.vercel.app
+- **Pitch deck:** [docs/AjoChain-Mezo-deck.pdf](docs/AjoChain-Mezo-deck.pdf)
 - **Chain:** Mezo testnet (chain ID 31611)
 - **Origin:** AjoChain started at Portaldot Hacker House 2026 (frozen on branch [`portaldot-final`](../../tree/portaldot-final)). Everything above "Original AjoChain" is new for the Mezo Buildathon.
 
