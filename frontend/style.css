@@ -167,6 +167,13 @@ a { color: var(--blue); }
 .why-list dt { font: 600 1.15rem var(--display); color: var(--gold); }
 .why-list dd { margin: .6rem 0 0; color: #c9cfea; max-width: 46ch; }
 
+.global-list { list-style: none; margin: 2rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .75rem; }
+.global-list li { display: grid; gap: .15rem; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: .8rem 1.1rem; min-width: 9.5rem; }
+.global-list b { font: 600 1.1rem var(--display); color: var(--indigo); }
+.global-list span { font-size: var(--step--1); color: var(--muted); }
+.global .section-lede { margin-top: 1.6rem; }
+.global-punch { margin: 1rem 0 0; max-width: 60ch; font-weight: 600; color: var(--ink); border-left: 4px solid var(--gold); padding-left: 1rem; }
+
 /* ───────── App ───────── */
 .app-head { margin-bottom: 2rem; }
 .gate {
